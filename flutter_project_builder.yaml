@@ -1,0 +1,31 @@
+# flutter_project_builder configuration
+# This file configures the architecture generation.
+
+organization: com.example
+
+# Architecture template: basic, clean, enterprise
+template: clean
+
+# Flavor configurations
+flavors:
+  - dev
+  - stage
+  - prod
+
+# State management
+riverpod: true
+
+# Backend integrations
+firebase: false
+
+# Local storage
+hive: true
+
+# Networking
+dio: true
+
+# Localization
+localization: true
+
+# Sample features
+sample_features: true
