@@ -12,12 +12,24 @@ import 'dart:io';
 class CliLogger {
   /// Creates a new [CliLogger] instance.
   ///
-  /// Set [useColors] to `false` to disable ANSI colors.
-  /// Defaults to auto-detection based on terminal capabilities.
-  CliLogger({bool? useColors})
-      : _useColors = useColors ?? stdout.hasTerminal && !Platform.isWindows;
+  /// Set [useColors] to `false` to disable ANSI colors. Defaults to
+  /// auto-detection: colors are used when stdout is a terminal that supports
+  /// ANSI escapes and the `NO_COLOR` environment variable is not set.
+  ///
+  /// Set [verbose] to `true` to print [trace] output (e.g. stack traces).
+  CliLogger({bool? useColors, this.verbose = false})
+      : _useColors = useColors ?? _detectColorSupport();
 
   final bool _useColors;
+
+  /// Whether [trace] messages are printed. Enabled by `--verbose`.
+  bool verbose;
+
+  static bool _detectColorSupport() {
+    if (Platform.environment.containsKey('NO_COLOR')) return false;
+    return stdout.hasTerminal && stdout.supportsAnsiEscapes;
+  }
+
   int _stepCount = 0;
   int _totalSteps = 0;
   final Stopwatch _stopwatch = Stopwatch();
@@ -126,6 +138,12 @@ class CliLogger {
   /// Prints a detail/sub-step message.
   void detail(String message) {
     stdout.writeln('    $arrowIcon ${grey(message)}');
+  }
+
+  /// Prints a diagnostic message (such as a stack trace) only when
+  /// [verbose] is enabled.
+  void trace(String message) {
+    if (verbose) stdout.writeln(grey(message));
   }
 
   /// Prints a blank line.

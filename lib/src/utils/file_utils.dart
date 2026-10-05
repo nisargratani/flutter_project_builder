@@ -19,6 +19,16 @@ class FileUtils {
     file.writeAsStringSync(content);
   }
 
+  /// Creates a file at [filePath] with [content] only if no file exists
+  /// there yet.
+  ///
+  /// Returns `true` if the file was written.
+  static bool createFileIfAbsent(String filePath, String content) {
+    if (fileExists(filePath)) return false;
+    createFile(filePath, content);
+    return true;
+  }
+
   /// Creates a directory at [dirPath] if it does not exist.
   static void createDirectory(String dirPath) {
     final dir = Directory(dirPath);

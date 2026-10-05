@@ -1,136 +1,124 @@
-// ignore_for_file: cascade_invocations, lines_longer_than_80_chars
-
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
+import 'package:yaml_edit/yaml_edit.dart';
 
 /// Utilities for reading and modifying `pubspec.yaml` files.
 ///
-/// Provides methods to add dependencies, update SDK constraints,
-/// and validate Flutter project structure.
+/// Edits are performed with `package:yaml_edit`, which preserves existing
+/// comments, formatting and line endings.
 class PubspecUtils {
   PubspecUtils._();
 
+  static const List<String> _dependencySections = [
+    'dependencies',
+    'dev_dependencies',
+  ];
+
   /// Checks if the given [path] contains a valid Flutter project.
   ///
-  /// A valid Flutter project has a `pubspec.yaml` with a Flutter SDK
-  /// dependency.
+  /// A valid Flutter project has a parseable `pubspec.yaml` that declares
+  /// `flutter: {sdk: flutter}` under `dependencies`.
   static bool isFlutterProject(String path) {
-    final pubspecPath = p.join(path, 'pubspec.yaml');
-    final file = File(pubspecPath);
-    if (!file.existsSync()) return false;
-
-    final content = file.readAsStringSync();
-    return content.contains('flutter:') && content.contains('sdk: flutter');
+    final pubspec = _load(path);
+    if (pubspec == null) return false;
+    final dependencies = pubspec['dependencies'];
+    if (dependencies is! YamlMap) return false;
+    final flutter = dependencies['flutter'];
+    return flutter is YamlMap && flutter['sdk'] == 'flutter';
   }
 
-  /// Returns the project name from `pubspec.yaml`.
+  /// Returns the project name from `pubspec.yaml`, or `null` if it cannot be
+  /// read.
   static String? getProjectName(String path) {
-    final pubspecPath = p.join(path, 'pubspec.yaml');
-    final file = File(pubspecPath);
-    if (!file.existsSync()) return null;
-
-    final yaml = loadYaml(file.readAsStringSync()) as YamlMap?;
-    return yaml?['name'] as String?;
+    final name = _load(path)?['name'];
+    return name is String ? name : null;
   }
 
-  /// Adds dependencies to `pubspec.yaml`.
+  /// Adds [dependencies] to the `dependencies` (or `dev_dependencies` when
+  /// [isDev] is `true`) section of `pubspec.yaml` in [projectPath].
   ///
-  /// This modifies the pubspec file by appending dependencies.
-  /// Handles both regular and SDK-based dependencies.
-  static void addDependencies(
+  /// Values are version constraints (e.g. `^1.0.0`, `any`) or SDK
+  /// dependencies written as `sdk: flutter`. A package that is already
+  /// declared in either `dependencies` or `dev_dependencies` is left
+  /// untouched, so existing constraints are never changed.
+  ///
+  /// Returns the names of the packages that were added.
+  static List<String> addDependencies(
     String projectPath,
     Map<String, String> dependencies, {
     bool isDev = false,
   }) {
-    final pubspecPath = p.join(projectPath, 'pubspec.yaml');
-    final file = File(pubspecPath);
-    if (!file.existsSync()) return;
+    final file = File(p.join(projectPath, 'pubspec.yaml'));
+    if (!file.existsSync()) return const [];
 
-    var content = file.readAsStringSync();
+    final editor = YamlEditor(file.readAsStringSync());
+    final pubspec = editor.parseAt([]).value;
+    if (pubspec is! Map) return const [];
+
     final section = isDev ? 'dev_dependencies' : 'dependencies';
+    final added = <String>[];
 
-    // Ensure the section exists.
-    if (!content.contains('$section:')) {
-      content += '\n$section:\n';
-    }
-
-    final sectionIndex = content.indexOf('$section:');
-
-    if (sectionIndex == -1) return;
-
-    // Find the end of the section.
-    final lines = content.split('\n');
-    var insertIndex = 0;
-    var inSection = false;
-
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].trimRight() == '$section:') {
-        inSection = true;
-        insertIndex = i + 1;
-        continue;
-      }
-      if (inSection) {
-        if (lines[i].startsWith('  ') || lines[i].trim().isEmpty) {
-          insertIndex = i + 1;
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Build new dependency lines.
-    final newDeps = StringBuffer();
     for (final entry in dependencies.entries) {
-      final name = entry.key;
-      final version = entry.value;
+      if (_isDeclared(pubspec, entry.key)) continue;
 
-      // Skip if already present.
-      if (content.contains('  $name:')) continue;
-
-      if (version.startsWith('sdk:')) {
-        newDeps.writeln('  $name:');
-        newDeps.writeln('    $version');
+      final value = _dependencyValue(entry.value);
+      final sectionNode =
+          editor.parseAt([section], orElse: () => wrapAsYamlNode(null));
+      if (sectionNode.value is Map) {
+        editor.update([section, entry.key], value);
       } else {
-        newDeps.writeln('  $name: $version');
+        editor.update([section], {entry.key: value});
       }
+      added.add(entry.key);
     }
 
-    if (newDeps.isEmpty) return;
-
-    // Insert at the correct position.
-    lines.insert(insertIndex, newDeps.toString().trimRight());
-    file.writeAsStringSync(lines.join('\n'));
+    if (added.isNotEmpty) file.writeAsStringSync(editor.toString());
+    return added;
   }
 
-  /// Adds Flutter localization configuration to `pubspec.yaml`.
+  /// Enables Flutter's localization code generation by setting
+  /// `flutter: generate: true` in `pubspec.yaml`.
+  ///
+  /// Does nothing if the flag is already set.
   static void addLocalizationConfig(String projectPath) {
-    final pubspecPath = p.join(projectPath, 'pubspec.yaml');
-    final file = File(pubspecPath);
+    final file = File(p.join(projectPath, 'pubspec.yaml'));
     if (!file.existsSync()) return;
 
-    var content = file.readAsStringSync();
-
-    if (content.contains('generate: true')) return;
-    
-    final lines = content.split('\n');
-    final flutterIndex = lines.indexWhere((l) => l == 'flutter:');
-    if (flutterIndex != -1) {
-      lines.insert(flutterIndex + 1, '  generate: true');
+    final editor = YamlEditor(file.readAsStringSync());
+    final flutter =
+        editor.parseAt(['flutter'], orElse: () => wrapAsYamlNode(null));
+    if (flutter.value is Map) {
+      if ((flutter.value as Map)['generate'] == true) return;
+      editor.update(['flutter', 'generate'], true);
     } else {
-      lines.add('\nflutter:\n  generate: true\n');
+      editor.update(['flutter'], {'generate': true});
     }
+    file.writeAsStringSync(editor.toString());
+  }
 
-    lines.add('''
+  static bool _isDeclared(Map<dynamic, dynamic> pubspec, String name) =>
+      _dependencySections.any((section) {
+        final deps = pubspec[section];
+        return deps is Map && deps.containsKey(name);
+      });
 
-flutter_intl:
-  enabled: true
-  arb_dir: lib/l10n
-  template_arb_file: app_en.arb
-  output_localization_file: app_localizations.dart
-''');
+  static Object _dependencyValue(String constraint) {
+    if (constraint.startsWith('sdk:')) {
+      return {'sdk': constraint.substring('sdk:'.length).trim()};
+    }
+    return constraint;
+  }
 
-    file.writeAsStringSync(lines.join('\n'));
+  static YamlMap? _load(String path) {
+    final file = File(p.join(path, 'pubspec.yaml'));
+    if (!file.existsSync()) return null;
+    try {
+      final yaml = loadYaml(file.readAsStringSync());
+      return yaml is YamlMap ? yaml : null;
+    } on YamlException {
+      return null;
+    }
   }
 }

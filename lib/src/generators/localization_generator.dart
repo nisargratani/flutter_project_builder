@@ -1,11 +1,14 @@
-// ignore_for_file: public_member_api_docs, require_trailing_commas, directives_ordering, cascade_invocations, lines_longer_than_80_chars
+// ignore_for_file: public_member_api_docs
 
 import 'package:path/path.dart' as p;
 
 import '../config/project_config.dart';
+import '../templates/l10n/l10n_template.dart';
 import '../utils/file_utils.dart';
+import '../utils/pubspec_utils.dart';
 
-/// Scaffolds localization configuration.
+/// Scaffolds `gen-l10n` localization: `l10n.yaml`, an English ARB file and
+/// `flutter: generate: true` in `pubspec.yaml`.
 class LocalizationGenerator {
   LocalizationGenerator({
     required this.projectPath,
@@ -19,8 +22,15 @@ class LocalizationGenerator {
   final ProjectConfig config;
 
   Future<void> generate() async {
-    final l10nPath = p.join(projectPath, 'lib', 'l10n');
-    FileUtils.createGitKeep(l10nPath);
-    // Will be populated with templates in Phase 6
+    PubspecUtils.addLocalizationConfig(projectPath);
+    // Never overwrite translations or a customised l10n setup.
+    FileUtils.createFileIfAbsent(
+      p.join(projectPath, 'l10n.yaml'),
+      L10nTemplate.l10nYaml,
+    );
+    FileUtils.createFileIfAbsent(
+      p.join(projectPath, 'lib', 'l10n', 'app_en.arb'),
+      L10nTemplate.appEnArb,
+    );
   }
 }

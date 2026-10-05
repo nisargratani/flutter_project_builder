@@ -11,7 +11,11 @@ import '../cli_logger.dart';
 /// Command to initialize configuration file.
 class InitCommand extends Command<int> {
   /// Creates a new [InitCommand].
-  InitCommand({required CliLogger logger}) : _logger = logger;
+  InitCommand({
+    required CliLogger logger,
+    String Function()? workingDirectory,
+  })  : _logger = logger,
+        _workingDirectory = workingDirectory ?? (() => Directory.current.path);
 
   @override
   String get name => 'init';
@@ -21,10 +25,11 @@ class InitCommand extends Command<int> {
       'Initialize flutter_project_builder.yaml configuration file.';
 
   final CliLogger _logger;
+  final String Function() _workingDirectory;
 
   @override
   Future<int> run() async {
-    final currentDir = Directory.current.path;
+    final currentDir = _workingDirectory();
     final configPath = p.join(currentDir, PackageConstants.configFileName);
 
     if (FileUtils.fileExists(configPath)) {

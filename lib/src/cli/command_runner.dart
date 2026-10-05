@@ -1,8 +1,9 @@
-// ignore_for_file: cascade_invocations, lines_longer_than_80_chars
+import 'dart:io';
 
 import 'package:args/command_runner.dart';
 
-import '../../flutter_project_builder.dart';
+import '../config/constants.dart';
+import 'cli_logger.dart';
 import 'commands/clean_command.dart';
 import 'commands/create_command.dart';
 import 'commands/doctor_command.dart';
@@ -14,10 +15,19 @@ import 'commands/upgrade_command.dart';
 ///
 /// Registers all subcommands and handles global flags like `--version`
 /// and `--verbose`.
+///
+/// ```dart
+/// final exitCode = await FlutterProjectBuilderCommandRunner()
+///     .run(['generate', 'feature', 'auth']);
+/// ```
 class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
   /// Creates a new [FlutterProjectBuilderCommandRunner].
+  ///
+  /// Commands operate on [workingDirectory], which defaults to the current
+  /// directory of the process.
   FlutterProjectBuilderCommandRunner({
     CliLogger? logger,
+    String? workingDirectory,
   })  : _logger = logger ?? CliLogger(),
         super(
           PackageConstants.packageName,
@@ -32,32 +42,45 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
       )
       ..addFlag(
         'verbose',
-        help: 'Enable verbose logging.',
+        help: 'Enable verbose logging (including stack traces).',
         negatable: false,
       );
 
-    addCommand(CreateCommand(logger: _logger));
-    addCommand(DoctorCommand(logger: _logger));
-    addCommand(CleanCommand(logger: _logger));
-    addCommand(UpgradeCommand(logger: _logger));
-    addCommand(InitCommand(logger: _logger));
-    addCommand(GenerateCommand(logger: _logger));
+    String cwd() => workingDirectory ?? Directory.current.path;
+
+    addCommand(CreateCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(DoctorCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(CleanCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(UpgradeCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(InitCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(GenerateCommand(logger: _logger, workingDirectory: cwd));
   }
 
   final CliLogger _logger;
 
+  /// Runs the CLI with [args] and returns the process exit code.
+  ///
+  /// Never throws: usage errors and unexpected failures are reported through
+  /// the logger and result in a non-zero exit code.
   @override
   Future<int> run(Iterable<String> args) async {
     try {
       final topLevelResults = parse(args);
 
       if (topLevelResults.flag('verbose')) {
-        // We could enable verbose mode on the logger here if implemented.
+        _logger.verbose = true;
       }
 
       if (topLevelResults.flag('version')) {
         _logger.info(PackageConstants.version);
         return 0;
+      }
+
+      if (topLevelResults.command == null && topLevelResults.rest.isNotEmpty) {
+        throw UsageException(
+          'Could not find a command named "${topLevelResults.rest.first}".',
+          usage,
+        );
       }
 
       // Default to help if no command is provided.
@@ -72,19 +95,20 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
 
       final exitCode = await runCommand(topLevelResults);
       return exitCode ?? 0;
-    } on FormatException catch (e, stackTrace) {
-      _logger.error(e.message);
-      _logger.detail('\n$stackTrace');
-      _logger.info('\nUsage:');
-      printUsage();
-      return 1;
     } on UsageException catch (e) {
-      _logger.error(e.message);
-      _logger.info('\n${e.usage}');
+      _logger
+        ..error(e.message)
+        ..info('\n${e.usage}');
+      return 1;
+    } on FormatException catch (e, stackTrace) {
+      _logger
+        ..error(e.message)
+        ..trace('$stackTrace');
       return 1;
     } catch (e, stackTrace) {
-      _logger.error('An unexpected error occurred: $e');
-      _logger.detail('\n$stackTrace');
+      _logger
+        ..error('An unexpected error occurred: $e')
+        ..trace('$stackTrace');
       return 1;
     }
   }

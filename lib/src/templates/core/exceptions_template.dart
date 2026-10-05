@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for core.
 class ExceptionsTemplate {
   ExceptionsTemplate._();
 
-  static const String networkFailure = '''
+  static const String networkFailure = r'''
 import '../errors/failure.dart';
 
 class NetworkFailure extends Failure {
@@ -13,7 +13,7 @@ class NetworkFailure extends Failure {
 }
 ''';
 
-  static const String cacheFailure = '''
+  static const String cacheFailure = r'''
 import '../errors/failure.dart';
 
 class CacheFailure extends Failure {
@@ -21,7 +21,7 @@ class CacheFailure extends Failure {
 }
 ''';
 
-  static const String unknownFailure = '''
+  static const String unknownFailure = r'''
 import '../errors/failure.dart';
 
 class UnknownFailure extends Failure {
@@ -30,7 +30,7 @@ class UnknownFailure extends Failure {
 }
 ''';
 
-  static const String validationFailure = '''
+  static const String validationFailure = r'''
 import '../errors/failure.dart';
 
 class ValidationFailure extends Failure {
@@ -38,28 +38,47 @@ class ValidationFailure extends Failure {
 }
 ''';
 
-  static const String errorMapper = '''
-import '../errors/app_exception.dart';
-import '../errors/failure.dart';
-import 'unknown_failure.dart';
-
+  /// Builds `error_mapper.dart`. When [dio] is `true`, `DioException`s are
+  /// mapped to `NetworkFailure`.
+  static String errorMapper({required bool dio}) {
+    final imports = dio
+        ? "import 'package:dio/dio.dart';\n\n"
+            "import '../errors/app_exception.dart';\n"
+            "import '../errors/failure.dart';\n"
+            "import 'network_failure.dart';\n"
+            "import 'unknown_failure.dart';\n"
+        : "import '../errors/app_exception.dart';\n"
+            "import '../errors/failure.dart';\n"
+            "import 'unknown_failure.dart';\n";
+    final dioCase = dio ? _dioErrorCase : '';
+    return '''
+$imports
+/// Converts any thrown object into a [Failure] the UI can render.
 class ErrorMapper {
   ErrorMapper._();
 
   static Failure map(Object error) {
     if (error is Failure) {
       return error;
-    }
+    }$dioCase
     if (error is AppException) {
       return UnknownFailure(error.message, error);
     }
-    // Add specific mappers here (e.g. DioException -> NetworkFailure)
     return UnknownFailure(error.toString(), error);
   }
 }
 ''';
+  }
 
-  static const String failureMessageResolver = '''
+  static const String _dioErrorCase = r'''
+    if (error is DioException) {
+      return NetworkFailure(
+        error.message ?? 'Network request failed',
+        statusCode: error.response?.statusCode,
+      );
+    }''';
+
+  static const String failureMessageResolver = r'''
 import 'package:flutter/widgets.dart';
 
 import '../errors/failure.dart';

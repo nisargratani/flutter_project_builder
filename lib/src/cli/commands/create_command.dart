@@ -1,5 +1,3 @@
-// ignore_for_file: cascade_invocations, lines_longer_than_80_chars
-
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
@@ -7,39 +5,68 @@ import 'package:args/command_runner.dart';
 import '../../config/constants.dart';
 import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
+import '../../utils/file_utils.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
 
 /// Command to create a new Flutter project architecture.
+///
+/// Configuration is resolved in this order (highest priority first):
+/// 1. options passed on the command line,
+/// 2. `flutter_project_builder.yaml` in the project root,
+/// 3. the interactive wizard (only when no file and no options are given and
+///    the terminal is interactive),
+/// 4. defaults.
 class CreateCommand extends Command<int> {
   /// Creates a new [CreateCommand].
-  CreateCommand({required CliLogger logger}) : _logger = logger {
+  CreateCommand({
+    required CliLogger logger,
+    String Function()? workingDirectory,
+  })  : _logger = logger,
+        _workingDirectory = workingDirectory ?? (() => Directory.current.path) {
     argParser
       ..addFlag(
         'interactive',
         abbr: 'i',
-        help: 'Use interactive wizard to configure the project.',
+        help: 'Ask for options interactively when no options and no '
+            '${PackageConstants.configFileName} are given.',
         defaultsTo: true,
       )
       ..addOption(
         'template',
         abbr: 't',
-        help: 'Architecture template to use.',
+        help: 'Architecture template to record in the configuration.',
         allowed: PackageConstants.templates,
         defaultsTo: PackageConstants.defaultTemplate,
       )
       ..addFlag(
         'flavors',
         abbr: 'f',
-        help: 'Generate flavor configurations (dev, stage, prod).',
+        help: 'Generate flavor entry points (dev, stage, prod).',
       )
       ..addFlag(
         'firebase',
-        help: 'Prepare Firebase folder structure.',
+        help: 'Prepare the lib/core/firebase/ folder.',
       )
       ..addFlag(
         'riverpod',
-        help: 'Generate Riverpod state management.',
+        help: 'Generate Riverpod UI helpers. Riverpod itself is always used.',
+        defaultsTo: true,
+        hide: true,
+      )
+      ..addFlag(
+        'dio',
+        help: 'Generate the Dio network layer.',
+        defaultsTo: true,
+      )
+      ..addFlag(
+        'hive',
+        help: 'Generate the Hive CE storage layer.',
+        defaultsTo: true,
+      )
+      ..addFlag(
+        'localization',
+        help: 'Generate gen-l10n localization (l10n.yaml + ARB).',
         defaultsTo: true,
       )
       ..addFlag(
@@ -51,135 +78,210 @@ class CreateCommand extends Command<int> {
       ..addOption(
         'org',
         abbr: 'o',
-        help: 'Organization identifier.',
+        help: 'Organization identifier to record in the configuration.',
         defaultsTo: PackageConstants.defaultOrganization,
+      )
+      ..addFlag(
+        'force',
+        help: 'Regenerate even if the architecture was already generated. '
+            'Overwrites generated files.',
+        negatable: false,
       );
   }
+
+  static const List<String> _configOptions = [
+    'template',
+    'flavors',
+    'firebase',
+    'riverpod',
+    'dio',
+    'hive',
+    'localization',
+    'sample',
+    'org',
+  ];
 
   @override
   String get name => 'create';
 
   @override
-  String get description => 'Generate a Flutter project architecture.';
+  String get description =>
+      'Generate the architecture inside the current Flutter project.';
 
   final CliLogger _logger;
+  final String Function() _workingDirectory;
 
   @override
   Future<int> run() async {
+    final results = argResults!;
+    final currentDir = _workingDirectory();
+
     _logger.header('Generating Architecture');
 
-    final currentDir = Directory.current.path;
-
     if (!PubspecUtils.isFlutterProject(currentDir)) {
-      _logger.error('No pubspec.yaml found or not a Flutter project.');
       _logger
-          .info('Please run this command inside an existing Flutter project.');
+        ..error('No pubspec.yaml found or not a Flutter project.')
+        ..info('Please run this command inside an existing Flutter project.');
       return 1;
     }
 
-    final isInteractive = argResults?['interactive'] as bool;
-    late ProjectConfig config;
+    if (ProjectGenerator.isGenerated(currentDir) && !results.flag('force')) {
+      _logger
+        ..error('The architecture has already been generated here.')
+        ..info(
+          'Use `flutter_project_builder upgrade` to refresh lib/core, or '
+          'pass --force to regenerate everything (overwrites generated '
+          'files, including lib/main.dart and lib/router/).',
+        );
+      return 1;
+    }
 
-    if (isInteractive && _isTerminalInteractive()) {
-      config = await _runInteractiveWizard();
-    } else {
-      config = _getConfigFromArgs();
+    final hasConfigFile = ProjectConfig.existsIn(currentDir);
+    var config = ProjectConfig.fromDirectory(currentDir);
+    final hasExplicitOptions = _configOptions.any(results.wasParsed);
+
+    if (hasConfigFile) {
+      _logger.info('Using ${PackageConstants.configFileName}');
+    } else if (!hasExplicitOptions &&
+        results.flag('interactive') &&
+        _isTerminalInteractive()) {
+      config = _runInteractiveWizard();
+    }
+    config = _applyExplicitOptions(config);
+
+    if (!config.riverpod) {
+      _logger.warning(
+        'riverpod: false only omits the AsyncValue UI helpers; the generated '
+        'app, router and providers still use Riverpod.',
+      );
     }
 
     _logger.summaryBox('Configuration', {
       'Template': config.template,
       'Organization': config.organization,
-      'Flavors': config.flavors.isNotEmpty ? config.flavors.join(', ') : 'None',
-      'Riverpod': config.riverpod ? 'Yes' : 'No',
-      'Firebase': config.firebase ? 'Yes' : 'No',
-      'Samples': config.sampleFeatures ? 'Yes' : 'No',
+      'Flavors': config.hasFlavors ? config.flavors.join(', ') : 'None',
+      'Network (Dio)': _yesNo(config.dio),
+      'Storage (Hive CE)': _yesNo(config.hive),
+      'Localization': _yesNo(config.localization),
+      'Firebase folder': _yesNo(config.firebase),
+      'Samples': _yesNo(config.sampleFeatures),
     });
 
     try {
-      final generator = ProjectGenerator(
+      await ProjectGenerator(
         projectPath: currentDir,
         config: config,
         logger: _logger,
-      );
-
-      await generator.generate();
-
-      _logger.nextSteps([
-        'Run `flutter pub get` to install new dependencies',
-        'Run `dart run build_runner build -d` if you use code generation',
-        'Review the generated `README.md` for architecture details',
-        if (config.hasFlavors)
-          'Run `flutter run -t lib/main_dev.dart --flavor dev` to start'
-        else
-          'Run `flutter run` to start the app',
-      ]);
-
-      return 0;
+      ).generate();
     } catch (e, st) {
-      _logger.error('Generation failed: $e');
-      _logger.detail(st.toString());
+      _logger
+        ..error('Generation failed: $e')
+        ..trace(st.toString());
       return 1;
     }
+
+    if (!hasConfigFile) {
+      // Persist the effective options so `upgrade` and `generate` reuse them.
+      FileUtils.createFile(
+        ProjectConfig.configPath(currentDir),
+        config.toYaml(),
+      );
+      _logger.success('Saved options to ${PackageConstants.configFileName}');
+    }
+
+    _logger.nextSteps([
+      'Run `flutter pub get` to install dependencies'
+          '${config.localization ? ' and generate localizations' : ''}',
+      'Run `flutter test` to run the generated tests',
+      'Read `ARCHITECTURE.md` for an overview of the generated structure',
+      if (config.hasFlavors)
+        'Run `flutter run -t lib/main_${config.flavors.first}.dart` to start'
+      else
+        'Run `flutter run` to start the app',
+    ]);
+
+    return 0;
   }
+
+  ProjectConfig _applyExplicitOptions(ProjectConfig config) {
+    final results = argResults!;
+    bool? flag(String name) =>
+        results.wasParsed(name) ? results.flag(name) : null;
+    String? option(String name) =>
+        results.wasParsed(name) ? results.option(name) : null;
+
+    List<String>? flavors;
+    if (results.wasParsed('flavors')) {
+      flavors = results.flag('flavors')
+          ? (config.hasFlavors
+              ? config.flavors
+              : PackageConstants.defaultFlavors)
+          : const [];
+    }
+
+    return config.copyWith(
+      template: option('template'),
+      organization: option('org'),
+      flavors: flavors,
+      riverpod: flag('riverpod'),
+      firebase: flag('firebase'),
+      dio: flag('dio'),
+      hive: flag('hive'),
+      localization: flag('localization'),
+      sampleFeatures: flag('sample'),
+    );
+  }
+
+  static String _yesNo(bool value) => value ? 'Yes' : 'No';
 
   bool _isTerminalInteractive() => stdin.hasTerminal && stdout.hasTerminal;
 
-  ProjectConfig _getConfigFromArgs() => ProjectConfig(
-        template: argResults?['template'] as String,
-        organization: argResults?['org'] as String,
-        flavors: (argResults?['flavors'] as bool? ?? false)
-            ? PackageConstants.defaultFlavors
-            : [],
-        riverpod: argResults?['riverpod'] as bool? ?? true,
-        firebase: argResults?['firebase'] as bool? ?? false,
-        sampleFeatures: argResults?['sample'] as bool? ?? true,
-      );
+  String? _ask(String question) {
+    stdout.write('? $question ');
+    return stdin.readLineSync()?.trim();
+  }
 
-  Future<ProjectConfig> _runInteractiveWizard() async {
-    _logger.info('Interactive wizard started. Press Enter to use defaults.');
-    _logger.newLine();
+  bool _confirm(String question, {required bool defaultValue}) {
+    final answer =
+        _ask('$question ${defaultValue ? '(Y/n)' : '(y/N)'}:')?.toLowerCase();
+    if (answer == null || answer.isEmpty) return defaultValue;
+    return answer == 'y' || answer == 'yes';
+  }
 
-    // Template
-    stdout.write(
-      '? Architecture template (${PackageConstants.templates.join('/')}) [${PackageConstants.defaultTemplate}]: ',
+  ProjectConfig _runInteractiveWizard() {
+    _logger
+      ..info('Interactive wizard started. Press Enter to use defaults.')
+      ..newLine();
+
+    final templateInput = _ask(
+      'Architecture template (${PackageConstants.templates.join('/')}) '
+      '[${PackageConstants.defaultTemplate}]:',
     );
-    final templateInput = stdin.readLineSync()?.trim();
-    final template = templateInput != null &&
-            PackageConstants.templates.contains(templateInput)
-        ? templateInput
+    final template = PackageConstants.templates.contains(templateInput)
+        ? templateInput!
         : PackageConstants.defaultTemplate;
 
-    // Org
-    stdout.write('? Organization [${PackageConstants.defaultOrganization}]: ');
-    final orgInput = stdin.readLineSync()?.trim();
-    final org = orgInput != null && orgInput.isNotEmpty
-        ? orgInput
-        : PackageConstants.defaultOrganization;
+    final orgInput =
+        _ask('Organization [${PackageConstants.defaultOrganization}]:');
+    final org = orgInput == null || orgInput.isEmpty
+        ? PackageConstants.defaultOrganization
+        : orgInput;
 
-    // Flavors
-    stdout.write('? Include flavors (dev, stage, prod)? (y/N): ');
-    final flavorsInput = stdin.readLineSync()?.trim().toLowerCase();
-    final flavors =
-        flavorsInput == 'y' ? PackageConstants.defaultFlavors : <String>[];
-
-    // Firebase
-    stdout.write('? Prepare Firebase structure? (y/N): ');
-    final firebaseInput = stdin.readLineSync()?.trim().toLowerCase();
-    final firebase = firebaseInput == 'y';
-
-    // Samples
-    stdout.write('? Generate sample features? (Y/n): ');
-    final samplesInput = stdin.readLineSync()?.trim().toLowerCase();
-    final sampleFeatures = samplesInput != 'n';
-
-    _logger.newLine();
-
-    return ProjectConfig(
+    final config = ProjectConfig(
       template: template,
       organization: org,
-      flavors: flavors,
-      firebase: firebase,
-      sampleFeatures: sampleFeatures,
+      flavors:
+          _confirm('Include flavors (dev, stage, prod)?', defaultValue: false)
+              ? PackageConstants.defaultFlavors
+              : const [],
+      dio: _confirm('Include Dio network layer?', defaultValue: true),
+      hive: _confirm('Include Hive CE storage?', defaultValue: true),
+      localization: _confirm('Include localization?', defaultValue: true),
+      firebase: _confirm('Prepare Firebase folder?', defaultValue: false),
+      sampleFeatures: _confirm('Generate sample features?', defaultValue: true),
     );
+
+    _logger.newLine();
+    return config;
   }
 }

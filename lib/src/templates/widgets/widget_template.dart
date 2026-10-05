@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for widgets.
 class WidgetTemplate {
   WidgetTemplate._();
 
-  static const String appButton = '''
+  static const String appButton = r'''
 import 'package:flutter/material.dart';
 
 class AppButton extends StatelessWidget {
@@ -35,7 +35,7 @@ class AppButton extends StatelessWidget {
 }
 ''';
 
-  static const String appGap = '''
+  static const String appGap = r'''
 import 'package:flutter/material.dart';
 
 class Gap extends StatelessWidget {
@@ -49,7 +49,7 @@ class Gap extends StatelessWidget {
 }
 ''';
 
-  static const String emptyWidget = '''
+  static const String emptyWidget = r'''
 import 'package:flutter/material.dart';
 
 class EmptyWidget extends StatelessWidget {

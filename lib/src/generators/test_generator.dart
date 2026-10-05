@@ -1,12 +1,13 @@
-// ignore_for_file: public_member_api_docs, require_trailing_commas, directives_ordering, cascade_invocations, lines_longer_than_80_chars
+// ignore_for_file: public_member_api_docs
 
 import 'package:path/path.dart' as p;
 
-import '../templates/tests/test_template.dart';
 import '../config/project_config.dart';
+import '../templates/tests/test_template.dart';
 import '../utils/file_utils.dart';
+import '../utils/pubspec_utils.dart';
 
-/// Scaffolds unit and widget test files.
+/// Scaffolds unit and widget tests for the generated code.
 class TestGenerator {
   TestGenerator({
     required this.projectPath,
@@ -21,10 +22,29 @@ class TestGenerator {
 
   Future<void> generate() async {
     final testPath = p.join(projectPath, 'test');
-    FileUtils.createGitKeep(testPath);
+    // Imports must use the pubspec package name, which can differ from the
+    // directory name.
+    final package =
+        PubspecUtils.getProjectName(projectPath) ?? p.basename(projectPath);
 
-    FileUtils.createFile(
-        p.join(testPath, 'widget_test.dart'),
-        TestTemplate.widgetTest.replaceAll('app_name', p.basename(projectPath)));
+    final files = {
+      'widget_test.dart': TestTemplate.appTest(
+        package,
+        samples: config.sampleFeatures,
+      ),
+      p.join('core', 'widgets', 'app_button_test.dart'):
+          TestTemplate.appButtonTest(package),
+      p.join('core', 'utils', 'validators_test.dart'):
+          TestTemplate.validatorsTest(package),
+      if (config.sampleFeatures) ...{
+        p.join('features', 'counter', 'counter_notifier_test.dart'):
+            TestTemplate.counterTest(package),
+        p.join('features', 'users', 'users_notifier_test.dart'):
+            TestTemplate.usersTest(package),
+      },
+    };
+    for (final entry in files.entries) {
+      FileUtils.createFile(p.join(testPath, entry.key), entry.value);
+    }
   }
 }

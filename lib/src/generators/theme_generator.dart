@@ -1,9 +1,9 @@
-// ignore_for_file: public_member_api_docs, require_trailing_commas, directives_ordering, cascade_invocations, lines_longer_than_80_chars
+// ignore_for_file: public_member_api_docs
 
 import 'package:path/path.dart' as p;
 
-import '../templates/theme/theme_template.dart';
 import '../config/project_config.dart';
+import '../templates/theme/theme_template.dart';
 import '../utils/file_utils.dart';
 
 /// Scaffolds theme configuration.
@@ -21,9 +21,10 @@ class ThemeGenerator {
 
   Future<void> generate() async {
     final themePath = p.join(projectPath, 'lib', 'core', 'theme');
-    FileUtils.createGitKeep(themePath);
 
     FileUtils.createFile(
-        p.join(themePath, 'app_theme.dart'), ThemeTemplate.appTheme);
+      p.join(themePath, 'app_theme.dart'),
+      ThemeTemplate.appTheme,
+    );
   }
 }

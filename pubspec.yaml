@@ -1,25 +1,31 @@
 name: flutter_project_builder
-description: Generate enterprise-grade Flutter architectures in seconds. Production-ready templates with Clean Architecture, Riverpod, GoRouter, and Hive CE.
-version: 0.0.1
-homepage: https://github.com/
-repository: https://github.com/
-issue_tracker: https://github.com/
+description: >-
+  CLI that scaffolds a Clean Architecture setup (Riverpod, GoRouter, Dio,
+  Hive CE, l10n, flavors, sample features and tests) into an existing Flutter
+  project.
+version: 0.1.0
+homepage: https://github.com/nisargratani/flutter_project_builder
+repository: https://github.com/nisargratani/flutter_project_builder
+issue_tracker: https://github.com/nisargratani/flutter_project_builder/issues
+topics:
+  - cli
+  - scaffolding
+  - architecture
+  - riverpod
+  - code-generation
 
 environment:
   sdk: ^3.4.0
 
 dependencies:
-  args: ^2.6.0
-  cli_util: ^0.5.2
-  io: ^1.0.5
-  path: ^1.9.1
-  pub_semver: ^2.1.5
-  yaml: ^3.1.3
+  args: ^2.5.0
+  path: ^1.9.0
+  yaml: ^3.1.2
+  yaml_edit: ^2.2.1
 
 dev_dependencies:
   lints: ^5.1.1
-  mocktail: ^1.0.4
-  test: ^1.25.15
+  test: ^1.25.8
 
 executables:
   flutter_project_builder: flutter_project_builder

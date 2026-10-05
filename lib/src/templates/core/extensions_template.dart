@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for core.
 class ExtensionsTemplate {
   ExtensionsTemplate._();
 
-  static const String contextExtensions = '''
+  static const String contextExtensions = r'''
 import 'package:flutter/material.dart';
 
 extension BuildContextX on BuildContext {
@@ -31,21 +31,21 @@ extension BuildContextX on BuildContext {
 }
 ''';
 
-  static const String stringExtensions = '''
+  static const String stringExtensions = r'''
 extension StringX on String {
   String get capitalize {
     if (isEmpty) return this;
-    return '\${this[0].toUpperCase()}\${substring(1).toLowerCase()}';
+    return '${this[0].toUpperCase()}${substring(1).toLowerCase()}';
   }
 
   bool get isValidEmail {
-    final regex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}\$');
+    final regex = RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$');
     return regex.hasMatch(this);
   }
 }
 ''';
 
-  static const String dateExtensions = '''
+  static const String dateExtensions = r'''
 import 'package:intl/intl.dart';
 
 extension DateTimeX on DateTime {
@@ -55,7 +55,7 @@ extension DateTimeX on DateTime {
 }
 ''';
 
-  static const String asyncValueExtensions = '''
+  static const String asyncValueExtensions = r'''
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 

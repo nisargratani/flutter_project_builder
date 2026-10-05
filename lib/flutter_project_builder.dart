@@ -18,8 +18,17 @@
 /// dart run flutter_project_builder create
 /// ```
 ///
-/// See the [README](https://github.com/user/flutter_project_builder) for
-/// detailed documentation.
+/// The library exposes the command runner and configuration types so the CLI
+/// can be embedded or driven programmatically:
+///
+/// ```dart
+/// final exitCode = await FlutterProjectBuilderCommandRunner(
+///   workingDirectory: '/path/to/flutter_app',
+/// ).run(['create', '--no-interactive']);
+/// ```
+///
+/// See the [README](https://github.com/nisargratani/flutter_project_builder)
+/// for detailed documentation.
 library;
 
 export 'src/cli/cli_logger.dart';

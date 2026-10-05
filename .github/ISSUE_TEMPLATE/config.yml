@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/user/flutter_project_builder#readme
+    url: https://github.com/nisargratani/flutter_project_builder#readme
     about: Read the documentation before filing an issue.

@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for network.
 class NetworkTemplate {
   NetworkTemplate._();
 
-  static const String apiClient = '''
+  static const String apiClient = r'''
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,7 +28,7 @@ final apiClientProvider = Provider<Dio>((ref) {
 });
 ''';
 
-  static const String apiInterceptors = '''
+  static const String apiInterceptors = r'''
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -49,19 +49,19 @@ class AuthInterceptor extends Interceptor {
 class LoggingInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
-    AppLogger.info('=> \${options.method} \${options.uri}');
+    AppLogger.info('=> ${options.method} ${options.uri}');
     super.onRequest(options, handler);
   }
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    AppLogger.info('<= \${response.statusCode} \${response.requestOptions.uri}');
+    AppLogger.info('<= ${response.statusCode} ${response.requestOptions.uri}');
     super.onResponse(response, handler);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    AppLogger.error('<= Error \${err.response?.statusCode} \${err.requestOptions.uri}');
+    AppLogger.error('<= Error ${err.response?.statusCode} ${err.requestOptions.uri}');
     super.onError(err, handler);
   }
 }

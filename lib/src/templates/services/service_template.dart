@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for services.
 class ServiceTemplate {
   ServiceTemplate._();
 
-  static const String connectivityService = '''
+  static const String connectivityService = r'''
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

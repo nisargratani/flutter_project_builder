@@ -28,13 +28,21 @@ class StringUtils {
 
   /// Converts a string to snake_case.
   ///
-  /// Example: `'UserProfile'` → `'user_profile'`
+  /// Handles camelCase, PascalCase, acronyms, spaces and hyphens.
+  ///
+  /// Examples: `'UserProfile'` → `'user_profile'`,
+  /// `'HTTPClient'` → `'http_client'`, `'user-profile'` → `'user_profile'`.
   static String toSnakeCase(String input) => input
+      .trim()
+      // Split "HTTPClient" into "HTTP_Client".
       .replaceAllMapped(
-        RegExp('[A-Z]'),
-        (match) => match.start == 0
-            ? match.group(0)!.toLowerCase()
-            : '_${match.group(0)!.toLowerCase()}',
+        RegExp('([A-Z]+)([A-Z][a-z])'),
+        (m) => '${m[1]}_${m[2]}',
+      )
+      // Split "userProfile" / "user2Profile" into "user_Profile".
+      .replaceAllMapped(
+        RegExp('([a-z0-9])([A-Z])'),
+        (m) => '${m[1]}_${m[2]}',
       )
       .replaceAll(RegExp(r'[_\-\s]+'), '_')
       .toLowerCase();
@@ -94,4 +102,87 @@ class StringUtils {
     }
     return '${input}s';
   }
+
+  /// Dart reserved words and built-in identifiers that cannot be used as
+  /// enum values, library path segments or type names.
+  static const Set<String> reservedWords = {
+    'abstract',
+    'as',
+    'assert',
+    'async',
+    'await',
+    'base',
+    'break',
+    'case',
+    'catch',
+    'class',
+    'const',
+    'continue',
+    'covariant',
+    'default',
+    'deferred',
+    'do',
+    'dynamic',
+    'else',
+    'enum',
+    'export',
+    'extends',
+    'extension',
+    'external',
+    'factory',
+    'false',
+    'final',
+    'finally',
+    'for',
+    'function',
+    'get',
+    'hide',
+    'if',
+    'implements',
+    'import',
+    'in',
+    'interface',
+    'is',
+    'late',
+    'library',
+    'mixin',
+    'new',
+    'null',
+    'of',
+    'on',
+    'operator',
+    'part',
+    'required',
+    'rethrow',
+    'return',
+    'sealed',
+    'set',
+    'show',
+    'static',
+    'super',
+    'switch',
+    'sync',
+    'this',
+    'throw',
+    'true',
+    'try',
+    'type',
+    'typedef',
+    'var',
+    'void',
+    'when',
+    'while',
+    'with',
+    'yield',
+  };
+
+  static final RegExp _identifierPattern = RegExp(r'^[a-zA-Z][a-zA-Z0-9_]*$');
+
+  /// Whether [input] is a valid Dart identifier that is not a reserved word.
+  ///
+  /// Identifiers starting with `_` are rejected because they would be
+  /// library-private in generated code.
+  static bool isValidIdentifier(String input) =>
+      _identifierPattern.hasMatch(input) &&
+      !reservedWords.contains(input.toLowerCase());
 }

@@ -21,13 +21,76 @@ jobs:
         run: dart pub get
 
       - name: Verify formatting
-        run: dart format --set-exit-if-changed .
+        run: dart format --output=none --set-exit-if-changed .
 
       - name: Analyze
         run: dart analyze --fatal-infos
 
       - name: Run tests
         run: dart test
+
+      - name: Publish dry-run
+        run: dart pub publish --dry-run
+
+  lower-bounds:
+    name: Lowest dependency versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Resolve lowest versions
+        run: dart pub downgrade
+
+      - name: Analyze
+        run: dart analyze --fatal-infos lib bin
+
+  integration:
+    name: Generated project (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: defaults
+            args: ''
+          - name: flavors
+            args: '--flavors --firebase'
+          - name: minimal
+            args: '--no-sample --no-dio --no-hive --no-localization'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Activate CLI from source
+        run: dart pub global activate --source path .
+
+      - name: Create Flutter app
+        run: flutter create --no-pub "$RUNNER_TEMP/app"
+
+      - name: Generate architecture
+        working-directory: ${{ runner.temp }}/app
+        run: dart pub global run flutter_project_builder create --no-interactive ${{ matrix.args }}
+
+      - name: Analyze generated project
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          flutter pub get
+          flutter analyze
+
+      - name: Test generated project
+        working-directory: ${{ runner.temp }}/app
+        run: flutter test
+
+      - name: Generate a feature
+        working-directory: ${{ runner.temp }}/app
+        run: dart pub global run flutter_project_builder generate feature user_profile
 
   pana:
     name: Package Analysis

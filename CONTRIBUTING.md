@@ -40,10 +40,12 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing.
 3. Write or update tests as needed.
 4. Run the full test suite and analysis:
    ```bash
-   dart analyze
-   dart format --set-exit-if-changed .
+   dart analyze --fatal-infos
+   dart format --output=none --set-exit-if-changed .
    dart test
    ```
+   If you changed a template, also verify a real generated project (see
+   "Verifying templates" below).
 5. Commit your changes with a descriptive commit message.
 6. Push your branch and create a Pull Request.
 
@@ -79,15 +81,32 @@ chore: update dependencies
 
 When adding new generated file templates:
 
-1. Create the template function in `lib/src/templates/`.
+1. Create the template in `lib/src/templates/`. Use raw strings (`r'''...'''`)
+   for static templates so backslashes (e.g. in regular expressions) and `$`
+   are emitted exactly as written. Templates are excluded from analysis, so
+   only a generated project can catch mistakes in them.
 2. Add the generator logic in `lib/src/generators/`.
-3. Register it in the appropriate command.
-4. Add tests for the template output.
+3. Register it in `ProjectGenerator` (or the appropriate command).
+4. Add tests for the template output in `test/project_generator_test.dart`.
 5. Update the documentation.
+
+### Verifying templates
+
+`dart test` checks what is written, not whether it compiles. Before opening a
+PR that touches templates, generate a real project:
+
+```bash
+dart pub global activate --source path .
+flutter create /tmp/fpb_app && cd /tmp/fpb_app
+flutter_project_builder create --no-interactive
+flutter pub get && flutter analyze && flutter test
+```
+
+CI runs this for several option combinations.
 
 ## Reporting Issues
 
-Use the [GitHub Issues](https://github.com/user/flutter_project_builder/issues)
+Use the [GitHub Issues](https://github.com/nisargratani/flutter_project_builder/issues)
 page to report bugs or request features. Please use the provided templates.
 
 ## Questions?

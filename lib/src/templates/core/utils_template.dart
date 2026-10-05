@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for core.
 class UtilsTemplate {
   UtilsTemplate._();
 
-  static const String debouncer = '''
+  static const String debouncer = r'''
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
@@ -24,7 +24,7 @@ class Debouncer {
 }
 ''';
 
-  static const String validators = '''
+  static const String validators = r'''
 class Validators {
   Validators._();
 
@@ -39,8 +39,8 @@ class Validators {
     if (value == null || value.trim().isEmpty) {
       return 'Email is required';
     }
-    final regex = RegExp(r'^[\w\.-]+@([\w-]+\.)+[\w-]{2,4}\$');
-    if (!regex.hasMatch(value)) {
+    final regex = RegExp(r'^[\w.+-]+@([\w-]+\.)+[\w-]{2,}$');
+    if (!regex.hasMatch(value.trim())) {
       return 'Enter a valid email address';
     }
     return null;

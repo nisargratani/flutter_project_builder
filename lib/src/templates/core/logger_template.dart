@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for core.
 class LoggerTemplate {
   LoggerTemplate._();
 
-  static const String logLevel = '''
+  static const String logLevel = r'''
 enum LogLevel {
   debug,
   info,
@@ -14,7 +14,7 @@ enum LogLevel {
 }
 ''';
 
-  static const String appLogger = '''
+  static const String appLogger = r'''
 import 'package:flutter/foundation.dart';
 import 'log_level.dart';
 
@@ -53,9 +53,9 @@ class AppLogger {
     final prefix = _getPrefix(level);
     
     // Simple print for now. In a real app, use a package like logger.
-    debugPrint('[\$time] \$prefix \$message');
-    if (error != null) debugPrint('Error: \$error');
-    if (stackTrace != null) debugPrint('StackTrace: \$stackTrace');
+    debugPrint('[$time] $prefix $message');
+    if (error != null) debugPrint('Error: $error');
+    if (stackTrace != null) debugPrint('StackTrace: $stackTrace');
   }
 
   static String _getPrefix(LogLevel level) {

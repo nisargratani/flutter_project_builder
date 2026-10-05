@@ -1,10 +1,10 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for theme.
 class ThemeTemplate {
   ThemeTemplate._();
 
-  static const String appTheme = '''
+  static const String appTheme = r'''
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';

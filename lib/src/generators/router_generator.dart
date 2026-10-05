@@ -1,9 +1,9 @@
-// ignore_for_file: public_member_api_docs, require_trailing_commas, directives_ordering, cascade_invocations, lines_longer_than_80_chars
+// ignore_for_file: public_member_api_docs
 
 import 'package:path/path.dart' as p;
 
-import '../templates/router/router_template.dart';
 import '../config/project_config.dart';
+import '../templates/router/router_template.dart';
 import '../utils/file_utils.dart';
 
 /// Scaffolds routing layer using GoRouter.
@@ -21,13 +21,18 @@ class RouterGenerator {
 
   Future<void> generate() async {
     final routerPath = p.join(projectPath, 'lib', 'router');
-    FileUtils.createGitKeep(routerPath);
 
     FileUtils.createFile(
-        p.join(routerPath, 'app_router.dart'), RouterTemplate.appRouter);
+      p.join(routerPath, 'app_router.dart'),
+      RouterTemplate.appRouter(samples: config.sampleFeatures),
+    );
     FileUtils.createFile(
-        p.join(routerPath, 'route_names.dart'), RouterTemplate.routeNames);
-    FileUtils.createFile(p.join(routerPath, 'navigation_logger.dart'),
-        RouterTemplate.navigationLogger);
+      p.join(routerPath, 'route_names.dart'),
+      RouterTemplate.routeNames,
+    );
+    FileUtils.createFile(
+      p.join(routerPath, 'navigation_logger.dart'),
+      RouterTemplate.navigationLogger,
+    );
   }
 }

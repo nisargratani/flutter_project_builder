@@ -1,23 +1,23 @@
-// ignore_for_file: public_member_api_docs, use_raw_strings, unnecessary_string_escapes
+// ignore_for_file: public_member_api_docs
 
 /// Template strings for core.
 class ConstantsTemplate {
   ConstantsTemplate._();
 
-  static const String appStrings = '''
+  static const String appStrings = r'''
 class AppStrings {
   AppStrings._();
   static const String appName = 'Flutter App';
 }
 ''';
 
-  static const String appAssets = '''
+  static const String appAssets = r'''
 class AppAssets {
   AppAssets._();
 }
 ''';
 
-  static const String appColors = '''
+  static const String appColors = r'''
 import 'package:flutter/material.dart';
 
 class AppColors {
@@ -37,7 +37,7 @@ class AppColors {
 }
 ''';
 
-  static const String appDimensions = '''
+  static const String appDimensions = r'''
 class AppDimensions {
   AppDimensions._();
   
@@ -53,7 +53,7 @@ class AppDimensions {
 }
 ''';
 
-  static const String appDurations = '''
+  static const String appDurations = r'''
 class AppDurations {
   AppDurations._();
   
@@ -63,13 +63,13 @@ class AppDurations {
 }
 ''';
 
-  static const String appIcons = '''
+  static const String appIcons = r'''
 class AppIcons {
   AppIcons._();
 }
 ''';
 
-  static const String appImages = '''
+  static const String appImages = r'''
 class AppImages {
   AppImages._();
 }

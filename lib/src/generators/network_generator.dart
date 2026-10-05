@@ -1,9 +1,9 @@
-// ignore_for_file: public_member_api_docs, require_trailing_commas, directives_ordering, cascade_invocations, lines_longer_than_80_chars
+// ignore_for_file: public_member_api_docs
 
 import 'package:path/path.dart' as p;
 
-import '../templates/network/network_template.dart';
 import '../config/project_config.dart';
+import '../templates/network/network_template.dart';
 import '../utils/file_utils.dart';
 
 /// Scaffolds network layer using Dio.
@@ -21,11 +21,14 @@ class NetworkGenerator {
 
   Future<void> generate() async {
     final networkPath = p.join(projectPath, 'lib', 'core', 'network');
-    FileUtils.createGitKeep(networkPath);
 
     FileUtils.createFile(
-        p.join(networkPath, 'api_client.dart'), NetworkTemplate.apiClient);
-    FileUtils.createFile(p.join(networkPath, 'api_interceptors.dart'),
-        NetworkTemplate.apiInterceptors);
+      p.join(networkPath, 'api_client.dart'),
+      NetworkTemplate.apiClient,
+    );
+    FileUtils.createFile(
+      p.join(networkPath, 'api_interceptors.dart'),
+      NetworkTemplate.apiInterceptors,
+    );
   }
 }
