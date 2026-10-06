@@ -15,8 +15,9 @@ import '../cli_logger.dart';
 ///
 /// Removes `lib/core`, `lib/features`, `lib/router`, the generated entry
 /// points (`app.dart`, `bootstrap.dart`, `main_<flavor>.dart`), generated
-/// tests and the generation marker. `lib/main.dart`, `pubspec.yaml` and
-/// localization files (`l10n.yaml`, `lib/l10n/`) are left untouched.
+/// tests and the generation marker. `lib/main.dart`, `pubspec.yaml`,
+/// localization files (`l10n.yaml`, `lib/l10n/`), `lib/firebase_options.dart`
+/// and native project changes are left untouched.
 class CleanCommand extends Command<int> {
   /// Creates a new [CleanCommand].
   CleanCommand({
@@ -114,6 +115,11 @@ class CleanCommand extends Command<int> {
         ..info(
           'lib/main.dart still calls bootstrap(); restore it or run '
           '`flutter_project_builder create` again.',
+        )
+        ..info(
+          'Native changes (app IDs, Android flavors, Xcode schemes) and '
+          'lib/firebase_options.dart were kept; revert them with git if '
+          'needed.',
         );
       return 0;
     } on FileSystemException catch (e) {

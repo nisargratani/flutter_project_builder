@@ -9,30 +9,48 @@ import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
 
+/// Material 3 light and dark themes built from [AppColors].
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get lightTheme {
+  static ThemeData get lightTheme => _build(
+        const ColorScheme.light(
+          primary: AppColors.primary,
+          onPrimary: AppColors.onPrimary,
+          secondary: AppColors.secondary,
+          onSecondary: AppColors.onSecondary,
+          surface: AppColors.surface,
+          onSurface: AppColors.onSurface,
+          error: AppColors.error,
+          onError: AppColors.onError,
+        ),
+        background: AppColors.background,
+      );
+
+  static ThemeData get darkTheme => _build(
+        const ColorScheme.dark(
+          primary: AppColors.primaryDark,
+          onPrimary: AppColors.onPrimaryDark,
+          secondary: AppColors.secondaryDark,
+          onSecondary: AppColors.onSecondaryDark,
+          surface: AppColors.surfaceDark,
+          onSurface: AppColors.onSurfaceDark,
+          error: AppColors.errorDark,
+          onError: AppColors.onErrorDark,
+        ),
+        background: AppColors.backgroundDark,
+      );
+
+  static ThemeData _build(ColorScheme colorScheme, {required Color background}) {
     return ThemeData(
       useMaterial3: true,
-      colorScheme: const ColorScheme.light(
-        primary: AppColors.primary,
-        secondary: AppColors.secondary,
-        surface: AppColors.surface,
-        error: AppColors.error,
-        onPrimary: AppColors.onPrimary,
-        onSecondary: AppColors.onSecondary,
-        onSurface: AppColors.onSurface,
-        onError: AppColors.onError,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: background,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+        centerTitle: false,
       ),
-    );
-  }
-  
-  static ThemeData get darkTheme {
-    // Implement dark theme here
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: const ColorScheme.dark(),
     );
   }
 }

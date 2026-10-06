@@ -83,6 +83,43 @@ void main() {
       expect(exists(project, 'lib/core'), isFalse);
     });
 
+    test('--dry-run writes nothing, even when already generated', () async {
+      final project = createProject();
+      final before = readFile(project, 'pubspec.yaml');
+      expect(await runCli(project, ['create', '--dry-run', '--flavors']), 0);
+      expect(exists(project, 'lib'), isFalse);
+      expect(exists(project, PackageConstants.configFileName), isFalse);
+      expect(readFile(project, 'pubspec.yaml'), before);
+
+      await runCli(project, ['create']);
+      expect(await runCli(project, ['create', '--dry-run']), 0);
+    });
+
+    test('templates are presets that flags can override', () async {
+      final basic = createProject();
+      expect(await runCli(basic, ['create', '--template=basic']), 0);
+      expect(exists(basic, 'lib/core/network'), isFalse);
+      expect(exists(basic, 'lib/features/users'), isFalse);
+      expect(exists(basic, 'l10n.yaml'), isFalse);
+
+      final enterprise = createProject();
+      expect(
+        await runCli(enterprise, ['create', '-t', 'enterprise', '--no-hive']),
+        0,
+      );
+      expect(exists(enterprise, 'lib/main_stage.dart'), isTrue);
+      expect(exists(enterprise, 'lib/core/storage'), isFalse);
+      final saved = ProjectConfig.fromDirectory(enterprise.path);
+      expect(saved.template, 'enterprise');
+      expect(saved.flavors, PackageConstants.defaultFlavors);
+    });
+
+    test('rejects an invalid --org', () async {
+      final project = createProject();
+      expect(await runCli(project, ['create', '--org=acme']), 1);
+      expect(exists(project, 'lib'), isFalse);
+    });
+
     test('refuses to run twice unless --force', () async {
       final project = createProject();
       expect(await runCli(project, ['create']), 0);
@@ -98,19 +135,76 @@ void main() {
   });
 
   group('generate feature', () {
-    test('creates the layer folders using snake_case', () async {
+    test('creates starter files in every layer and a route', () async {
       final project = createProject();
-      expect(await runCli(project, ['generate', 'feature', 'UserProfile']), 0);
-      for (final layer in [
-        'data/datasource',
-        'domain/usecases',
-        'presentation/pages',
+      await runCli(project, ['create', '--no-sample']);
+
+      expect(
+        await runCli(project, [
+          'generate',
+          'feature',
+          'UserProfile',
+          '--fields=id:int,title:String,score:double?',
+        ]),
+        0,
+      );
+      for (final path in [
+        'domain/entities/user_profile_entity.dart',
+        'domain/repository/user_profile_repository.dart',
+        'data/models/user_profile_model.dart',
+        'data/datasource/user_profile_remote_data_source.dart',
+        'data/repository/user_profile_repository_impl.dart',
+        'presentation/providers/user_profile_provider.dart',
+        'presentation/pages/user_profile_page.dart',
+        'domain/usecases/.gitkeep',
       ]) {
         expect(
-          exists(project, 'lib/features/user_profile/$layer/.gitkeep'),
+          exists(project, 'lib/features/user_profile/$path'),
           isTrue,
+          reason: path,
         );
       }
+      expect(
+        exists(
+            project,
+            'test/features/user_profile/'
+            'user_profile_notifier_test.dart'),
+        isTrue,
+      );
+      expect(
+        readFile(
+            project,
+            'lib/features/user_profile/data/models/'
+            'user_profile_model.dart'),
+        contains("score: (json['score'] as num?)?.toDouble(),"),
+      );
+      final router = readFile(project, 'lib/router/app_router.dart');
+      expect(router, contains('const UserProfilePage()'));
+      expect(
+        router,
+        contains('user_profile/presentation/pages/user_profile_page.dart'),
+      );
+      expect(
+        readFile(project, 'lib/router/route_names.dart'),
+        contains("static const String userProfile = 'user-profile';"),
+      );
+    });
+
+    test('--no-route and missing router produce files and a warning', () async {
+      final project = createProject();
+      expect(
+        await runCli(project, ['generate', 'feature', 'auth', '--no-route']),
+        0,
+      );
+      expect(exists(project, 'lib/router'), isFalse);
+      expect(await runCli(project, ['generate', 'page', 'settings']), 0);
+      expect(
+        exists(
+            project,
+            'lib/features/settings/presentation/pages/'
+            'settings_page.dart'),
+        isTrue,
+      );
     });
 
     test('is idempotent and keeps existing files', () async {
@@ -137,6 +231,77 @@ void main() {
       expect(exists(project, 'lib'), isFalse);
       expect(exists(project, 'escape'), isFalse);
       expect(exists(project, '../escape'), isFalse);
+    });
+  });
+
+  group('generate page/widget/provider/model', () {
+    test('writes files in the expected places', () async {
+      final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
+
+      for (final args in [
+        ['page', 'edit_profile', '--feature=profile'],
+        ['widget', 'info_card'],
+        ['widget', 'price_tag', '--feature=shop'],
+        ['provider', 'cart'],
+        ['provider', 'session', '--type=async', '--feature=profile'],
+        ['model', 'address', '--fields=street:String,zip:int?'],
+      ]) {
+        expect(
+          await runCli(project, ['generate', ...args]),
+          0,
+          reason: args.join(' '),
+        );
+      }
+      for (final path in [
+        'lib/features/profile/presentation/pages/edit_profile_page.dart',
+        'test/features/profile/edit_profile_page_test.dart',
+        'lib/core/widgets/info_card.dart',
+        'test/core/widgets/info_card_test.dart',
+        'lib/features/shop/presentation/widgets/price_tag.dart',
+        'lib/features/cart/presentation/providers/cart_provider.dart',
+        'lib/features/profile/presentation/providers/session_provider.dart',
+        'lib/features/address/data/models/address_model.dart',
+        'test/features/address/address_model_test.dart',
+      ]) {
+        expect(exists(project, path), isTrue, reason: path);
+      }
+      expect(
+        readFile(
+            project,
+            'lib/features/profile/presentation/providers/'
+            'session_provider.dart'),
+        contains('extends AsyncNotifier<String>'),
+      );
+      expect(
+        readFile(project, 'lib/router/route_names.dart'),
+        contains("static const String editProfile = 'edit-profile';"),
+      );
+    });
+
+    test('rejects clashing names and bad field specs', () async {
+      final project = createProject();
+      expect(await runCli(project, ['generate', 'widget', 'app']), 1);
+      expect(await runCli(project, ['generate', 'page', 'home']), 1);
+      expect(
+        await runCli(project, ['generate', 'model', 'a', '--fields=x:Map']),
+        1,
+      );
+      expect(
+        await runCli(project, ['generate', 'provider', 'p', '--type=x']),
+        1,
+      );
+      expect(exists(project, 'lib'), isFalse);
+    });
+
+    test('--dry-run writes nothing', () async {
+      final project = createProject();
+      expect(
+        await runCli(project, ['generate', 'feature', 'auth', '--dry-run']),
+        0,
+      );
+      expect(exists(project, 'lib'), isFalse);
+      expect(exists(project, 'test'), isFalse);
     });
   });
 

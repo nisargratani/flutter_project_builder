@@ -80,6 +80,55 @@ sample_features: false
     });
   });
 
+  group('templates', () {
+    test('presets differ', () {
+      final basic = ProjectConfig.forTemplate('basic');
+      expect(
+        [basic.dio, basic.hive, basic.localization, basic.sampleFeatures],
+        everyElement(isFalse),
+      );
+      expect(ProjectConfig.forTemplate('clean').dio, isTrue);
+      expect(
+        ProjectConfig.forTemplate('enterprise').flavors,
+        PackageConstants.defaultFlavors,
+      );
+      expect(() => ProjectConfig.forTemplate('x'), throwsFormatException);
+    });
+
+    test('missing keys fall back to the template preset', () {
+      final config = ProjectConfig.fromYaml('template: basic\ndio: true\n');
+      expect(config.dio, isTrue, reason: 'explicit key wins');
+      expect(config.hive, isFalse, reason: 'basic preset');
+      expect(
+        ProjectConfig.fromYaml('dio: false', templateOverride: 'enterprise')
+            .flavors,
+        PackageConstants.defaultFlavors,
+      );
+      expect(
+        ProjectConfig.fromYaml('template: enterprise\nflavors: []\n').flavors,
+        isEmpty,
+      );
+    });
+  });
+
+  test('organization and native_flavors', () {
+    expect(ProjectConfig.isValidOrganization('com.acme'), isTrue);
+    expect(ProjectConfig.isValidOrganization('io.acme_labs.app'), isTrue);
+    for (final value in ['acme', 'com.', '.com', 'com..acme', 'com.1acme']) {
+      expect(ProjectConfig.isValidOrganization(value), isFalse, reason: value);
+    }
+    expect(
+      () => ProjectConfig.fromYaml('organization: acme'),
+      throwsFormatException,
+    );
+    final config = ProjectConfig.fromYaml(
+      'organization: io.acme\nflavors: [dev]\nnative_flavors: false\n',
+    );
+    expect(config.hasCustomOrganization, isTrue);
+    expect(config.hasNativeFlavors, isFalse);
+    expect(ProjectConfig.fromYaml(config.toYaml()).nativeFlavors, isFalse);
+  });
+
   test('fromDirectory falls back to defaults without a file', () {
     final project = createProject();
     expect(ProjectConfig.existsIn(project.path), isFalse);
@@ -92,5 +141,13 @@ sample_features: false
         .writeAsStringSync('template: basic\n');
     expect(ProjectConfig.existsIn(project.path), isTrue);
     expect(ProjectConfig.fromDirectory(project.path).template, 'basic');
+  });
+
+  test('the example configuration file is valid', () {
+    final config = ProjectConfig.fromYaml(
+      File('example/flutter_project_builder.yaml').readAsStringSync(),
+    );
+    expect(config.template, 'enterprise');
+    expect(config.hasNativeFlavors, isTrue);
   });
 }

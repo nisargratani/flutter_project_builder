@@ -1,21 +1,25 @@
 # flutter_project_builder configuration
 # This file configures the architecture generation.
 
-organization: com.example
+# Used for the Android application ID and iOS/macOS bundle identifiers.
+organization: com.mycompany
 
-# Architecture template: basic, clean, enterprise
-template: clean
+# Preset for options not listed here: basic, clean, enterprise
+template: enterprise
 
-# Flavor configurations
+# Flavor names; each produces lib/main_<flavor>.dart
 flavors:
   - dev
   - stage
   - prod
 
+# Configure Android product flavors and Xcode schemes for the flavors
+native_flavors: true
+
 # State management
 riverpod: true
 
-# Backend integrations
+# Firebase (firebase_core); run `flutterfire configure` afterwards
 firebase: false
 
 # Local storage

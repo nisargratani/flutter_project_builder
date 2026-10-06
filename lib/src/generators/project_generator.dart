@@ -4,6 +4,7 @@ import '../cli/cli_logger.dart';
 import '../config/constants.dart';
 import '../config/project_config.dart';
 import '../utils/file_utils.dart';
+import '../utils/native_project.dart';
 import '../utils/pubspec_utils.dart';
 import 'config_generator.dart';
 import 'core_generator.dart';
@@ -39,6 +40,10 @@ class ProjectGenerator {
   /// The CLI logger.
   final CliLogger logger;
 
+  /// Problems found while generating that need manual follow-up (for
+  /// example a native file that could not be edited).
+  final List<String> warnings = [];
+
   /// Whether the project at [projectPath] was already generated (the marker
   /// file `lib/.flutter_project_builder` exists).
   static bool isGenerated(String projectPath) =>
@@ -62,6 +67,7 @@ class ProjectGenerator {
         'dio' => config.dio,
         'hive_ce' || 'hive_ce_flutter' => config.hive,
         'flutter_localizations' => config.localization,
+        'firebase_core' => config.firebase,
         _ => true,
       };
 
@@ -71,9 +77,13 @@ class ProjectGenerator {
   /// are kept) and writes the generated files, overwriting files with the
   /// same path.
   ///
+  /// When the organization is customised or native flavors are enabled,
+  /// the Android, iOS, macOS, Linux and Windows projects are edited too (see
+  /// `NativeProject`). Inside `FileUtils.dryRun` nothing is written.
+  ///
   /// If [upgradeMode] is true, it only regenerates `lib/core/` files and
-  /// skips features, routing, entry points, localization and tests to avoid
-  /// overwriting user logic.
+  /// skips features, routing, entry points, native projects, localization
+  /// and tests to avoid overwriting user logic.
   Future<void> generate({bool upgradeMode = false}) async {
     final steps = <String, Future<void> Function()>{
       'Updating dependencies...': () async {
@@ -89,10 +99,10 @@ class ProjectGenerator {
             .generate();
         await ServiceGenerator(projectPath: projectPath, config: config)
             .generate();
-        if (config.firebase) {
-          FileUtils.createGitKeep(
-            p.join(projectPath, 'lib', 'core', 'firebase'),
-          );
+        if (upgradeMode) {
+          // Keep your URLs; only add the files if they are missing.
+          ConfigGenerator(projectPath: projectPath, config: config)
+              .generateEnvironment(onlyIfMissing: true);
         }
       },
       'Generating Theme...':
@@ -142,11 +152,41 @@ class ProjectGenerator {
       },
       'Generating main files and config...':
           ConfigGenerator(projectPath: projectPath, config: config).generate,
+      if (config.hasCustomOrganization ||
+          config.hasNativeFlavors ||
+          config.firebase)
+        'Configuring native projects...': _configureNative,
       'Generating Test templates...':
           TestGenerator(projectPath: projectPath, config: config).generate,
       'Generating documentation...':
           DocGenerator(projectPath: projectPath, config: config).generate,
     };
+  }
+
+  Future<void> _configureNative() async {
+    final native = NativeProject(
+      projectPath: projectPath,
+      packageName:
+          PubspecUtils.getProjectName(projectPath) ?? p.basename(projectPath),
+    );
+    if (config.hasCustomOrganization) {
+      warnings.addAll(native.applyOrganization(config.organization).warnings);
+    }
+    if (config.firebase) {
+      // firebase_core 4.x requires iOS 15 and macOS 10.15.
+      warnings.addAll(
+        native.raiseDeploymentTargets(ios: '15.0', macos: '10.15').warnings,
+      );
+    }
+    if (config.hasNativeFlavors) {
+      warnings.addAll(native.configureFlavors(config.flavors).warnings);
+      // Plain `flutter run` (without --flavor) uses the first flavor.
+      PubspecUtils.setFlutterOption(
+        projectPath,
+        'default-flavor',
+        config.flavors.first,
+      );
+    }
   }
 
   void _writeMarker() {

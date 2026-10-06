@@ -5,118 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-10-04
+## [0.0.1] - 2026-10-06
 
-First release intended for pub.dev. Every option was verified by generating a
-project and running `flutter analyze` and `flutter test` on it.
+Initial release.
 
-### Fixed
+### `create`
 
-- Generated email validators (`Validators.email`, `String.isValidEmail`)
-  rejected every valid address because template backslashes were dropped. All
-  templates are now raw strings. The regex also accepts `+` aliases and long
-  TLDs.
-- Generated tests imported `package:<directory name>` instead of the pubspec
-  package name, so they did not compile when the two differed.
-- `generate feature` accepted path traversal (`../../x`), reserved words and
-  invalid identifiers. Names are now validated.
-- `create` ignored `flutter_project_builder.yaml`, and command-line options
-  were ignored in interactive terminals. Options now resolve as: flags, then
-  config file, then wizard, then defaults.
-- `upgrade` ignored the options used by `create` (for example it re-added the
-  network layer after `--no-dio`). `create` now saves its options, which
-  `upgrade` and `generate` use.
-- Malformed configuration files crashed with a stack trace. They now produce a
-  clear error.
-- Custom flavor names in the config file were ignored (always dev/stage/prod).
-- `HiveStorageService` was never initialised, so storage failed with
-  `LateInitializationError` on first use. It is now initialised in
-  `bootstrap.dart` and throws a descriptive `StateError` if used uninitialised.
-- `create` could be re-run silently and overwrite customised generated files.
-  It now requires `--force`.
-- Unknown commands exited with code 0.
-- `pubspec.yaml` editing was text-based: it could insert dependencies at the
-  top of the file when only `dev_dependencies` existed, matched packages by
-  substring, broke on CRLF files and added an unrelated `flutter_intl`
-  section. It now uses `package:yaml_edit`.
-- Next-step hints referenced `build_runner` (never added) and
-  `flutter run --flavor` (native flavors are not generated).
-- `doctor` could not run `flutter` on Windows and always exited with 0.
-- `--verbose` had no effect. It now shows stack traces, which are hidden by
-  default.
+- Generates a feature-first Clean Architecture setup in an existing Flutter
+  project: Riverpod 3, GoRouter, Dio, Hive CE, gen-l10n localization,
+  Material 3 light and dark themes built from `AppColors`, error handling
+  (`Failure`, `ErrorMapper`, `FailureMessageResolver`), logger, extensions,
+  validators, widgets, a home page, and tests.
+- Templates are presets: `basic` (core, router and home page only), `clean`
+  (adds network, storage, localization and samples) and `enterprise` (clean
+  plus dev/stage/prod flavors). Explicit options override the preset.
+- `--org` sets the Android application ID, the iOS/macOS bundle IDs, the
+  Linux application ID and the Windows company name.
+- Flavors: `lib/main_<flavor>.dart`, `FlavorConfig`, and native
+  configuration (`--native-flavors`, on by default). This covers Android
+  product flavors with per-flavor application ID suffix and app name;
+  iOS/macOS build configurations, schemes, bundle IDs and display names;
+  and CocoaPods configuration mappings. `default-flavor` is set in the
+  pubspec, and `lib/main.dart` follows `appFlavor`.
+- Per-environment `AppConfig` (base URL, app name, network logging), exposed
+  through `appConfigProvider` and used by the Dio client.
+  `--dart-define=BASE_URL=...` overrides the base URL.
+- `--firebase`: adds `firebase_core`, a `FirebaseInitializer` called in
+  `bootstrap.dart`, and a placeholder `firebase_options.dart` that
+  `flutterfire configure` replaces. The app runs normally until Firebase is
+  configured.
+- Sample features: Counter (`Notifier`) and Users (all layers,
+  `AsyncNotifier`, loading, error, retry and empty states).
+- `--dry-run` lists the files that would be created or overwritten.
+- Saves the effective options to `flutter_project_builder.yaml` and refuses
+  to run twice without `--force`.
 
-### Added
+### `generate`
 
-- Working sample features: Counter (`Notifier`) and Users (all Clean
-  Architecture layers, `AsyncNotifier`, loading, error, retry and empty
-  states), with routes and a home page.
-- Localization setup: `l10n.yaml`, `lib/l10n/app_en.arb` and delegates wired
-  into `MaterialApp`.
-- `lib/app.dart` and `lib/bootstrap.dart`. Flavor entry points no longer
-  duplicate `MyApp`.
-- `ErrorMapper` maps `DioException` to `NetworkFailure` when Dio is enabled.
-- Generated tests: app smoke test, validator tests and sample feature tests.
-- `ARCHITECTURE.md` in the generated project (never overwrites an existing
-  file).
-- `--firebase` now creates `lib/core/firebase/`.
-- `create` options `--[no-]dio`, `--[no-]hive`, `--[no-]localization` and
-  `--force`; `upgrade --force`; `clean` keeps user tests and translations.
-- `FlutterProjectBuilderCommandRunner(workingDirectory: ...)` and
-  `CliLogger(verbose: ...)` / `CliLogger.trace`.
-- `ProjectConfig.fromYaml`, `ProjectConfig.existsIn` and
-  `ProjectConfig.configPath`. `ProjectGenerator.isGenerated`,
-  `ProjectGenerator.markerPath` and `ProjectGenerator.dependenciesFor`.
-- Test suite and CI jobs that generate and test real Flutter projects.
+- `feature <name>`: entity, repository contract, model, data source (mock,
+  plus Dio when enabled), repository implementation, `AsyncNotifier`
+  provider, page, test and route registration. `--fields` defines the
+  entity fields (`String`, `int`, `double`, `num`, `bool`, `DateTime`,
+  optionally nullable).
+- `page`, `widget`, `provider` (`--type notifier|async`) and `model`
+  (`--fields`), each with a test. `--feature` chooses the folder.
+- Never overwrites files. Rejects invalid names, Dart keywords, path
+  traversal, and class names that clash with Flutter. Supports `--dry-run`
+  and `--no-route`.
 
-### Changed
+### Other commands
 
-- Generated projects only receive the dependencies their code uses.
-  Unused packages are no longer added: `riverpod_annotation`,
-  `cached_network_image`, `shimmer`, `gap`, `url_launcher`, `share_plus`,
-  `permission_handler`, `path_provider` and `network_image_mock`.
-- Generated dependency constraints use the lowest compatible versions for
-  each major version (`flutter_riverpod ^3.0.0`, `go_router ^17.0.0`,
-  `intl: any`, `connectivity_plus ^7.0.0`). Generated projects need Flutter
-  3.32+ (`PackageConstants.minFlutterSdk` and `minDartSdk` now reflect this).
-- `clean` requires the generation marker or `--force`, and requires `--force`
-  in non-interactive shells. `upgrade` behaves the same way.
-- `storageServiceProvider` must be overridden with an initialised service
-  (done by the generated `bootstrap.dart`). Projects generated by 0.0.1 that
-  run `upgrade` need to add that override (see the doc comment on
-  `storageServiceProvider`).
-- `Failure` implements `Exception`.
-
-### Removed
-
-- Unused CLI dependencies: `cli_util`, `io` and `pub_semver`.
-
-## [0.0.1] - 2026-08-03 (unreleased)
-
-### Added
-
-- Initial release of `flutter_project_builder`.
-- `create` command with full Clean Architecture scaffolding.
-- `doctor` command for environment health checks.
-- `clean` command to remove generated files.
-- `upgrade` command to update architecture.
-- `init` command to create configuration file.
-- `generate feature <name>` command for new feature scaffolding.
-- Riverpod state management with `AsyncNotifier` and `Notifier`.
-- GoRouter routing with auth guards, shell routes, and navigation logger.
-- Dio networking layer with interceptors and error mapping.
-- Hive CE local storage with generic `StorageService`.
-- Material 3 theming with light/dark mode support.
-- Localization support with ARB files.
-- 17+ reusable widgets.
-- 11 utility classes.
-- 6 service stubs.
-- Counter feature (teaching example).
-- Users feature (API example with mock data).
-- Comprehensive error handling system.
-- Enterprise logger with colorized output.
-- Flavor support (dev, stage, prod).
-- Firebase folder preparation.
-- Generated documentation and architecture guide.
-- Unit, widget, and mock API test templates.
-- GitHub Actions CI workflow.
-- Interactive CLI wizard.
+- `upgrade` regenerates `lib/core` while keeping your `AppConfig` values
+  (`--force`, `--dry-run`).
+- `init` writes a default configuration file.
+- `clean` removes generated code and keeps your own files.
+- `doctor` checks `flutter`, `dart` and `git`.
+- `--version` and `--verbose` global options.

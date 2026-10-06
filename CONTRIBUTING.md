@@ -102,7 +102,14 @@ flutter_project_builder create --no-interactive
 flutter pub get && flutter analyze && flutter test
 ```
 
-CI runs this for several option combinations.
+CI runs this for several option combinations, on the latest stable Flutter
+and on Flutter 3.32 (the minimum), and builds the `enterprise` template for
+Android, iOS, macOS, Linux, Windows and web.
+
+Native-project edits (`lib/src/utils/native_project.dart`) are unit tested
+against real `flutter create` files in `test/fixtures/native/`. When Flutter
+changes those templates, refresh the fixtures from a new
+`flutter create` project.
 
 ## Reporting Issues
 

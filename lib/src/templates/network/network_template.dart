@@ -8,22 +8,26 @@ class NetworkTemplate {
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/app_config.dart';
 import 'api_interceptors.dart';
 
+/// Shared HTTP client configured from the active [AppConfig].
 final apiClientProvider = Provider<Dio>((ref) {
+  final config = ref.watch(appConfigProvider);
   final dio = Dio(
     BaseOptions(
-      baseUrl: 'https://api.example.com/',
+      baseUrl: config.baseUrl,
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 15),
     ),
   );
 
-  dio.interceptors.addAll([
-    AuthInterceptor(ref),
-    LoggingInterceptor(),
-  ]);
+  dio.interceptors.add(AuthInterceptor(ref));
+  if (config.enableNetworkLogs) {
+    dio.interceptors.add(LoggingInterceptor());
+  }
 
+  ref.onDispose(dio.close);
   return dio;
 });
 ''';

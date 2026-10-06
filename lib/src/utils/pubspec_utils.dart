@@ -1,8 +1,8 @@
-import 'dart:io';
-
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
+
+import 'file_utils.dart';
 
 /// Utilities for reading and modifying `pubspec.yaml` files.
 ///
@@ -50,10 +50,11 @@ class PubspecUtils {
     Map<String, String> dependencies, {
     bool isDev = false,
   }) {
-    final file = File(p.join(projectPath, 'pubspec.yaml'));
-    if (!file.existsSync()) return const [];
+    final path = p.join(projectPath, 'pubspec.yaml');
+    final content = FileUtils.readFile(path);
+    if (content == null) return const [];
 
-    final editor = YamlEditor(file.readAsStringSync());
+    final editor = YamlEditor(content);
     final pubspec = editor.parseAt([]).value;
     if (pubspec is! Map) return const [];
 
@@ -74,7 +75,7 @@ class PubspecUtils {
       added.add(entry.key);
     }
 
-    if (added.isNotEmpty) file.writeAsStringSync(editor.toString());
+    if (added.isNotEmpty) FileUtils.createFile(path, editor.toString());
     return added;
   }
 
@@ -82,20 +83,26 @@ class PubspecUtils {
   /// `flutter: generate: true` in `pubspec.yaml`.
   ///
   /// Does nothing if the flag is already set.
-  static void addLocalizationConfig(String projectPath) {
-    final file = File(p.join(projectPath, 'pubspec.yaml'));
-    if (!file.existsSync()) return;
+  static void addLocalizationConfig(String projectPath) =>
+      setFlutterOption(projectPath, 'generate', true);
 
-    final editor = YamlEditor(file.readAsStringSync());
+  /// Sets `flutter: <key>: <value>` in `pubspec.yaml` (for example
+  /// `default-flavor`). Does nothing if the value is already set.
+  static void setFlutterOption(String projectPath, String key, Object value) {
+    final path = p.join(projectPath, 'pubspec.yaml');
+    final content = FileUtils.readFile(path);
+    if (content == null) return;
+
+    final editor = YamlEditor(content);
     final flutter =
         editor.parseAt(['flutter'], orElse: () => wrapAsYamlNode(null));
     if (flutter.value is Map) {
-      if ((flutter.value as Map)['generate'] == true) return;
-      editor.update(['flutter', 'generate'], true);
+      if ((flutter.value as Map)[key] == value) return;
+      editor.update(['flutter', key], value);
     } else {
-      editor.update(['flutter'], {'generate': true});
+      editor.update(['flutter'], {key: value});
     }
-    file.writeAsStringSync(editor.toString());
+    FileUtils.createFile(path, editor.toString());
   }
 
   static bool _isDeclared(Map<dynamic, dynamic> pubspec, String name) =>
@@ -112,10 +119,10 @@ class PubspecUtils {
   }
 
   static YamlMap? _load(String path) {
-    final file = File(p.join(path, 'pubspec.yaml'));
-    if (!file.existsSync()) return null;
+    final content = FileUtils.readFile(p.join(path, 'pubspec.yaml'));
+    if (content == null) return null;
     try {
-      final yaml = loadYaml(file.readAsStringSync());
+      final yaml = loadYaml(content);
       return yaml is YamlMap ? yaml : null;
     } on YamlException {
       return null;

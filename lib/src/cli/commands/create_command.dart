@@ -8,6 +8,7 @@ import '../../generators/project_generator.dart';
 import '../../utils/file_utils.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
+import '../dry_run_report.dart';
 
 /// Command to create a new Flutter project architecture.
 ///
@@ -16,7 +17,7 @@ import '../cli_logger.dart';
 /// 2. `flutter_project_builder.yaml` in the project root,
 /// 3. the interactive wizard (only when no file and no options are given and
 ///    the terminal is interactive),
-/// 4. defaults.
+/// 4. the preset of the chosen template (`clean` by default).
 class CreateCommand extends Command<int> {
   /// Creates a new [CreateCommand].
   CreateCommand({
@@ -35,18 +36,36 @@ class CreateCommand extends Command<int> {
       ..addOption(
         'template',
         abbr: 't',
-        help: 'Architecture template to record in the configuration.',
+        help: 'Preset for options that are not set explicitly.',
         allowed: PackageConstants.templates,
+        allowedHelp: {
+          'basic': 'Core, theme, router and home page only.',
+          'clean': 'Adds network, storage, localization and samples.',
+          'enterprise': 'clean + dev/stage/prod flavors (Dart and native).',
+        },
         defaultsTo: PackageConstants.defaultTemplate,
+      )
+      ..addOption(
+        'org',
+        abbr: 'o',
+        help: 'Organization (reverse domain). Sets the Android application '
+            'ID and iOS/macOS bundle IDs to <org>.<package>.',
+        defaultsTo: PackageConstants.defaultOrganization,
       )
       ..addFlag(
         'flavors',
         abbr: 'f',
-        help: 'Generate flavor entry points (dev, stage, prod).',
+        help: 'Generate dev, stage and prod flavors.',
+      )
+      ..addFlag(
+        'native-flavors',
+        help: 'Also configure Android product flavors and Xcode schemes so '
+            '`flutter run --flavor <name>` works.',
+        defaultsTo: true,
       )
       ..addFlag(
         'firebase',
-        help: 'Prepare the lib/core/firebase/ folder.',
+        help: 'Add firebase_core and initialise Firebase on startup.',
       )
       ..addFlag(
         'riverpod',
@@ -75,11 +94,11 @@ class CreateCommand extends Command<int> {
         help: 'Generate sample features (Counter, Users).',
         defaultsTo: true,
       )
-      ..addOption(
-        'org',
-        abbr: 'o',
-        help: 'Organization identifier to record in the configuration.',
-        defaultsTo: PackageConstants.defaultOrganization,
+      ..addFlag(
+        'dry-run',
+        help: 'List the files that would be created or overwritten, without '
+            'writing anything.',
+        negatable: false,
       )
       ..addFlag(
         'force',
@@ -92,6 +111,7 @@ class CreateCommand extends Command<int> {
   static const List<String> _configOptions = [
     'template',
     'flavors',
+    'native-flavors',
     'firebase',
     'riverpod',
     'dio',
@@ -115,6 +135,7 @@ class CreateCommand extends Command<int> {
   Future<int> run() async {
     final results = argResults!;
     final currentDir = _workingDirectory();
+    final dryRun = results.flag('dry-run');
 
     _logger.header('Generating Architecture');
 
@@ -125,24 +146,39 @@ class CreateCommand extends Command<int> {
       return 1;
     }
 
-    if (ProjectGenerator.isGenerated(currentDir) && !results.flag('force')) {
+    if (results.wasParsed('org') &&
+        !ProjectConfig.isValidOrganization(results.option('org')!)) {
+      usageException('Invalid --org "${results.option('org')}". Use a '
+          'reverse-domain identifier such as "com.mycompany".');
+    }
+
+    if (ProjectGenerator.isGenerated(currentDir) &&
+        !results.flag('force') &&
+        !dryRun) {
       _logger
         ..error('The architecture has already been generated here.')
         ..info(
           'Use `flutter_project_builder upgrade` to refresh lib/core, or '
           'pass --force to regenerate everything (overwrites generated '
-          'files, including lib/main.dart and lib/router/).',
+          'files, including lib/main.dart and lib/router/). Add --dry-run '
+          'to preview.',
         );
       return 1;
     }
 
     final hasConfigFile = ProjectConfig.existsIn(currentDir);
-    var config = ProjectConfig.fromDirectory(currentDir);
+    final templateOverride =
+        results.wasParsed('template') ? results.option('template') : null;
+    var config = ProjectConfig.fromDirectory(
+      currentDir,
+      templateOverride: templateOverride,
+    );
     final hasExplicitOptions = _configOptions.any(results.wasParsed);
 
     if (hasConfigFile) {
       _logger.info('Using ${PackageConstants.configFileName}');
     } else if (!hasExplicitOptions &&
+        !dryRun &&
         results.flag('interactive') &&
         _isTerminalInteractive()) {
       config = _runInteractiveWizard();
@@ -158,21 +194,46 @@ class CreateCommand extends Command<int> {
 
     _logger.summaryBox('Configuration', {
       'Template': config.template,
-      'Organization': config.organization,
-      'Flavors': config.hasFlavors ? config.flavors.join(', ') : 'None',
+      'Organization': config.hasCustomOrganization
+          ? '${config.organization} (sets app IDs)'
+          : '${config.organization} (app IDs unchanged)',
+      'Flavors': config.hasFlavors
+          ? '${config.flavors.join(', ')}'
+              '${config.hasNativeFlavors ? ' (Dart + native)' : ' (Dart only)'}'
+          : 'None',
       'Network (Dio)': _yesNo(config.dio),
       'Storage (Hive CE)': _yesNo(config.hive),
       'Localization': _yesNo(config.localization),
-      'Firebase folder': _yesNo(config.firebase),
+      'Firebase': _yesNo(config.firebase),
       'Samples': _yesNo(config.sampleFeatures),
     });
 
+    final generator = ProjectGenerator(
+      projectPath: currentDir,
+      config: config,
+      logger: _logger,
+    );
+
+    Future<void> generate() async {
+      await generator.generate();
+      if (!hasConfigFile) {
+        // Persist the effective options so `upgrade` and `generate` reuse
+        // them.
+        FileUtils.createFile(
+          ProjectConfig.configPath(currentDir),
+          config.toYaml(),
+        );
+      }
+    }
+
     try {
-      await ProjectGenerator(
-        projectPath: currentDir,
-        config: config,
-        logger: _logger,
-      ).generate();
+      if (dryRun) {
+        final recorder = await FileUtils.dryRun(generate);
+        printDryRun(_logger, recorder, currentDir);
+        _printWarnings(generator.warnings);
+        return 0;
+      }
+      await generate();
     } catch (e, st) {
       _logger
         ..error('Generation failed: $e')
@@ -181,26 +242,34 @@ class CreateCommand extends Command<int> {
     }
 
     if (!hasConfigFile) {
-      // Persist the effective options so `upgrade` and `generate` reuse them.
-      FileUtils.createFile(
-        ProjectConfig.configPath(currentDir),
-        config.toYaml(),
-      );
       _logger.success('Saved options to ${PackageConstants.configFileName}');
     }
+    _printWarnings(generator.warnings);
 
+    final firstFlavor = config.hasFlavors ? config.flavors.first : null;
     _logger.nextSteps([
       'Run `flutter pub get` to install dependencies'
           '${config.localization ? ' and generate localizations' : ''}',
+      if (config.firebase)
+        'Run `flutterfire configure` to connect your Firebase project',
       'Run `flutter test` to run the generated tests',
       'Read `ARCHITECTURE.md` for an overview of the generated structure',
-      if (config.hasFlavors)
-        'Run `flutter run -t lib/main_${config.flavors.first}.dart` to start'
+      if (config.hasNativeFlavors)
+        'Run `flutter run --flavor $firstFlavor` (plain `flutter run` uses '
+            '$firstFlavor)'
+      else if (config.hasFlavors)
+        'Run `flutter run -t lib/main_$firstFlavor.dart` to start'
       else
         'Run `flutter run` to start the app',
     ]);
 
     return 0;
+  }
+
+  void _printWarnings(List<String> warnings) {
+    for (final warning in warnings) {
+      _logger.warning(warning);
+    }
   }
 
   ProjectConfig _applyExplicitOptions(ProjectConfig config) {
@@ -223,6 +292,7 @@ class CreateCommand extends Command<int> {
       template: option('template'),
       organization: option('org'),
       flavors: flavors,
+      nativeFlavors: flag('native-flavors'),
       riverpod: flag('riverpod'),
       firebase: flag('firebase'),
       dio: flag('dio'),
@@ -260,25 +330,44 @@ class CreateCommand extends Command<int> {
     final template = PackageConstants.templates.contains(templateInput)
         ? templateInput!
         : PackageConstants.defaultTemplate;
+    // The template's preset provides the default answers.
+    final preset = ProjectConfig.forTemplate(template);
 
-    final orgInput =
-        _ask('Organization [${PackageConstants.defaultOrganization}]:');
-    final org = orgInput == null || orgInput.isEmpty
-        ? PackageConstants.defaultOrganization
-        : orgInput;
+    var org = PackageConstants.defaultOrganization;
+    while (true) {
+      final input = _ask('Organization, e.g. com.mycompany '
+          '[${PackageConstants.defaultOrganization}]:');
+      if (input == null || input.isEmpty) break;
+      if (ProjectConfig.isValidOrganization(input)) {
+        org = input;
+        break;
+      }
+      _logger.warning('Use a reverse-domain identifier such as com.acme.');
+    }
 
-    final config = ProjectConfig(
-      template: template,
+    final flavors = _confirm(
+      'Include flavors (dev, stage, prod)?',
+      defaultValue: preset.hasFlavors,
+    );
+    final config = preset.copyWith(
       organization: org,
-      flavors:
-          _confirm('Include flavors (dev, stage, prod)?', defaultValue: false)
-              ? PackageConstants.defaultFlavors
-              : const [],
-      dio: _confirm('Include Dio network layer?', defaultValue: true),
-      hive: _confirm('Include Hive CE storage?', defaultValue: true),
-      localization: _confirm('Include localization?', defaultValue: true),
-      firebase: _confirm('Prepare Firebase folder?', defaultValue: false),
-      sampleFeatures: _confirm('Generate sample features?', defaultValue: true),
+      flavors: flavors ? PackageConstants.defaultFlavors : const [],
+      nativeFlavors: flavors &&
+          _confirm(
+            'Configure native Android/iOS flavors?',
+            defaultValue: true,
+          ),
+      dio: _confirm('Include Dio network layer?', defaultValue: preset.dio),
+      hive: _confirm('Include Hive CE storage?', defaultValue: preset.hive),
+      localization: _confirm(
+        'Include localization?',
+        defaultValue: preset.localization,
+      ),
+      firebase: _confirm('Set up Firebase?', defaultValue: preset.firebase),
+      sampleFeatures: _confirm(
+        'Generate sample features?',
+        defaultValue: preset.sampleFeatures,
+      ),
     );
 
     _logger.newLine();

@@ -49,16 +49,20 @@ jobs:
         run: dart analyze --fatal-infos lib bin
 
   integration:
-    name: Generated project (${{ matrix.name }})
+    name: Generated project (${{ matrix.name }}, Flutter ${{ matrix.flutter }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        flutter: ['3.x', '3.32.x']
+        name: [clean, basic, enterprise, minimal]
         include:
-          - name: defaults
+          - name: clean
             args: ''
-          - name: flavors
-            args: '--flavors --firebase'
+          - name: basic
+            args: '--template=basic'
+          - name: enterprise
+            args: '--template=enterprise --org=io.acme --firebase'
           - name: minimal
             args: '--no-sample --no-dio --no-hive --no-localization'
     steps:
@@ -66,17 +70,28 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: ${{ matrix.flutter }}
           channel: stable
 
       - name: Activate CLI from source
         run: dart pub global activate --source path .
 
       - name: Create Flutter app
-        run: flutter create --no-pub "$RUNNER_TEMP/app"
+        run: flutter create --no-pub --project-name my_app "$RUNNER_TEMP/app"
 
       - name: Generate architecture
         working-directory: ${{ runner.temp }}/app
         run: dart pub global run flutter_project_builder create --no-interactive ${{ matrix.args }}
+
+      - name: Generate building blocks
+        working-directory: ${{ runner.temp }}/app
+        run: |
+          fpb() { dart pub global run flutter_project_builder "$@"; }
+          fpb generate feature product --fields "id:int,title:String,price:double?,at:DateTime"
+          fpb generate page settings
+          fpb generate widget info_card
+          fpb generate provider cart --type async
+          fpb generate model address --fields "street:String,zip:int?"
 
       - name: Analyze generated project
         working-directory: ${{ runner.temp }}/app
@@ -88,9 +103,68 @@ jobs:
         working-directory: ${{ runner.temp }}/app
         run: flutter test
 
-      - name: Generate a feature
-        working-directory: ${{ runner.temp }}/app
-        run: dart pub global run flutter_project_builder generate feature user_profile
+  platforms:
+    name: Build ${{ matrix.platform }} (enterprise template)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+            build: flutter build apk --debug --flavor dev
+          - platform: ios
+            os: macos-latest
+            build: flutter build ios --simulator --debug --flavor dev
+          - platform: macos
+            os: macos-latest
+            build: flutter build macos --debug --flavor dev
+          - platform: linux
+            os: ubuntu-latest
+            build: flutter build linux --debug
+          - platform: windows
+            os: windows-latest
+            build: flutter build windows --debug
+          - platform: web
+            os: ubuntu-latest
+            build: flutter build web
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+
+      - name: Activate CLI from source
+        run: dart pub global activate --source path .
+
+      - name: Create app and generate architecture
+        run: |
+          flutter create --no-pub --project-name my_app "$RUNNER_TEMP/app"
+          cd "$RUNNER_TEMP/app"
+          dart pub global run flutter_project_builder create --no-interactive --template=enterprise --org=io.acme
+          dart pub global run flutter_project_builder generate feature product
+          flutter pub get
+
+      - name: Build
+        run: |
+          cd "$RUNNER_TEMP/app"
+          ${{ matrix.build }}
 
   pana:
     name: Package Analysis

@@ -4,34 +4,19 @@
 [![CI](https://github.com/nisargratani/flutter_project_builder/actions/workflows/ci.yml/badge.svg)](https://github.com/nisargratani/flutter_project_builder/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A command-line tool that scaffolds a feature-first Clean Architecture setup
-into an **existing** Flutter project: Riverpod, GoRouter, Dio, Hive CE,
-`gen-l10n` localization, flavors, two working sample features and tests.
+A command-line tool that turns a fresh `flutter create` project into a
+feature-first Clean Architecture app (Riverpod, GoRouter, Dio, Hive CE,
+localization, Firebase), configures **native flavors and app IDs**, and keeps
+generating **features, pages, widgets, providers and models** as you build.
 
-The generated project passes `flutter analyze` and `flutter test` immediately
+Everything it generates passes `flutter analyze` and `flutter test` right
 after `flutter pub get`.
-
-## What gets generated
-
-| Area | Generated code |
-| --- | --- |
-| Entry points | `lib/main.dart`, `lib/app.dart` (`MyApp`), `lib/bootstrap.dart` (initialises services), optional `lib/main_<flavor>.dart` |
-| State management | Riverpod 3 (`Notifier`, `AsyncNotifier`, `Provider`) |
-| Routing | GoRouter provider with named routes and a navigation logger |
-| Networking (`dio`) | Dio client provider, auth and logging interceptors, `DioException` → `NetworkFailure` mapping |
-| Storage (`hive`) | `StorageService` interface + Hive CE implementation, initialised in `bootstrap.dart` |
-| Localization (`localization`) | `l10n.yaml`, `lib/l10n/app_en.arb`, delegates wired into `MaterialApp` |
-| Errors | `Failure` hierarchy, `AppException`, `ErrorMapper`, `FailureMessageResolver` |
-| Core | Theme (Material 3 light/dark), constants, logger, extensions, validators, debouncer, connectivity service, widgets (`AppButton`, `Gap`, `EmptyWidget`) |
-| Samples (`sample`) | **Counter** (synchronous `Notifier`) and **Users** (entity → model → data source → repository → `AsyncNotifier` → page with loading, error, retry and empty states) |
-| Tests | App smoke test, widget test, validator tests, and sample-feature tests |
-| Docs | `ARCHITECTURE.md` (only if it does not exist) |
 
 ## Requirements
 
 - **CLI:** Dart SDK 3.4 or newer.
-- **Generated project:** Flutter 3.32 / Dart 3.8 or newer. This floor comes
-  from `flutter_riverpod` 3, and 3.32 is also the first release that writes
+- **Generated project:** Flutter 3.32 or newer (Dart 3.8). This floor comes
+  from `flutter_riverpod` 3; 3.32 is also the first release that writes
   localizations into `lib/l10n/`.
 
 ## Installation
@@ -42,134 +27,195 @@ dart pub global activate flutter_project_builder
 
 Make sure the pub cache `bin` directory is on your `PATH`
 (`~/.pub-cache/bin` on macOS/Linux, `%LOCALAPPDATA%\Pub\Cache\bin` on
-Windows). Alternatively, run it with
-`dart pub global run flutter_project_builder <command>`.
+Windows), or run commands as `dart pub global run flutter_project_builder ...`.
 
 ## Quick start
 
 ```bash
 flutter create my_app
 cd my_app
-flutter_project_builder create
+flutter_project_builder create --template=enterprise --org=com.mycompany
 flutter pub get
 flutter test
-flutter run
+flutter run --flavor dev
 ```
 
-In a terminal, `create` starts a short wizard. Passing any option skips the
-wizard:
+Not sure what `create` will touch? Preview it first:
 
 ```bash
-flutter_project_builder create --flavors --no-hive --org=com.mycompany
+flutter_project_builder create --template=enterprise --dry-run
 ```
 
-`create` never runs twice by accident. If the project was already generated,
-it stops and suggests `upgrade`, or `--force` to regenerate (which overwrites
-generated files, including `lib/main.dart` and `lib/router/`).
+## Templates
 
-## Commands
+`--template` picks a preset; any option you pass explicitly overrides it.
 
-### `create`
+| Template | Network | Storage | Localization | Samples | Flavors |
+| --- | --- | --- | --- | --- | --- |
+| `basic` | – | – | – | – | – |
+| `clean` (default) | Dio | Hive CE | gen-l10n | Counter, Users | – |
+| `enterprise` | Dio | Hive CE | gen-l10n | Counter, Users | dev, stage, prod (Dart and native) |
 
-Generates the architecture in the current Flutter project and adds the
-required dependencies to `pubspec.yaml`. Existing dependency constraints are
-never changed.
+All templates include the core layer (theme, widgets, logger, errors,
+extensions, validators), the router, a home page, the environment config and
+tests.
+
+## `create` options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--[no-]sample`, `-s` | on | Counter and Users sample features (plus their routes and tests). |
+| `--template`, `-t` | `clean` | Preset, see above. |
+| `--org`, `-o` | `com.example` | Sets the Android `applicationId`, the iOS/macOS bundle IDs and the Linux application ID to `<org>.<package>` (Windows: company name). The default leaves IDs unchanged. |
+| `--[no-]flavors`, `-f` | off | `dev`, `stage`, `prod` flavors (use the config file for other names). |
+| `--[no-]native-flavors` | on | With flavors, also configure Android product flavors and Xcode schemes so `flutter run --flavor <name>` works. |
+| `--[no-]firebase` | off | Adds `firebase_core` and initialises Firebase on startup. |
 | `--[no-]dio` | on | Dio network layer. |
 | `--[no-]hive` | on | Hive CE storage layer. |
-| `--[no-]localization` | on | `gen-l10n` setup. |
-| `--[no-]flavors`, `-f` | off | `lib/main_dev.dart`, `main_stage.dart`, `main_prod.dart` and `FlavorConfig`. |
-| `--[no-]firebase` | off | Creates the `lib/core/firebase/` folder. Does not add Firebase packages. |
-| `--template`, `-t` | `clean` | `basic`, `clean` or `enterprise`. Recorded in the config; in this release all three generate the same layout. |
-| `--org`, `-o` | `com.example` | Recorded in the config. Does not change bundle identifiers (use `flutter create --org` for that). |
+| `--[no-]localization` | on | `l10n.yaml`, `lib/l10n/app_en.arb`, delegates wired into `MaterialApp`. |
+| `--[no-]sample`, `-s` | on | Counter and Users sample features with routes and tests. |
+| `--dry-run` | | List files that would be created or overwritten; write nothing. |
+| `--force` | | Regenerate an already generated project (overwrites generated files). |
 | `--[no-]interactive`, `-i` | on | Use the wizard when no options and no config file are given. |
-| `--force` | | Regenerate an already generated project. |
 
-After a successful run without a config file, the effective options are saved
-to `flutter_project_builder.yaml`, so `upgrade` regenerates exactly the same
-layers.
+The effective options are saved to `flutter_project_builder.yaml`, so
+`upgrade` and `generate` reuse them. `create` refuses to run twice unless you
+pass `--force`.
 
-### `generate feature <name>`
+## Generating code
+
+Every target writes the code **and a test**, never overwrites existing files,
+and supports `--dry-run`.
 
 ```bash
-flutter_project_builder generate feature UserProfile
+# A complete feature: entity, repository contract, model, data source
+# (mock + Dio), repository implementation, AsyncNotifier provider, page with
+# loading/error/empty/retry states, test, and a route.
+flutter_project_builder generate feature product --fields "id:int,title:String,price:double?,releasedAt:DateTime"
+
+flutter_project_builder generate page settings                   # page + route
+flutter_project_builder generate page edit_profile --feature profile
+flutter_project_builder generate widget info_card                # lib/core/widgets
+flutter_project_builder generate widget price_tag --feature product
+flutter_project_builder generate provider cart                   # Notifier + state class
+flutter_project_builder generate provider session --type async   # AsyncNotifier
+flutter_project_builder generate model address --fields "street:String,zip:int?"
 ```
 
-Creates `lib/features/user_profile/` with empty `data/` (datasource, models,
-repository), `domain/` (entities, repository, usecases) and `presentation/`
-(pages, providers, widgets) folders. Names are converted to snake_case.
-Invalid identifiers, Dart reserved words and paths such as `../x` are
-rejected. Running it again only adds missing folders.
+- **Names** are converted to snake_case for files and PascalCase for classes
+  (`UserProfile` → `user_profile.dart`, `UserProfilePage`). Invalid
+  identifiers, Dart keywords, paths like `../x`, and names that clash with
+  Flutter's own classes (e.g. `Badge`) are rejected.
+- **`--fields`** accepts `String`, `int`, `double`, `num`, `bool` and
+  `DateTime`, each optionally nullable (`?`). The default is `id:int,name:String`.
+  Quote the value: shells such as zsh treat `?` as a wildcard.
+- **Routes:** features and pages are added as child routes of the home route,
+  with `RouteNames`/`RoutePaths` constants (`context.goNamed(RouteNames.product)`).
+  This relies on the `// flutter_project_builder:` marker comments in
+  `lib/router/`; if they are missing you get the snippet to paste instead.
+  Pass `--no-route` to skip.
+- `--feature` puts the file in that feature's folder (it defaults to the
+  name; for widgets the default is `lib/core/widgets/`).
 
-### `upgrade`
+## Flavors and environments
 
-Regenerates `lib/core/` with the current templates, using
-`flutter_project_builder.yaml`. Features, routes, entry points and tests are
-not touched. Commit first so you can review the diff. Pass `--force` (`-f`)
-to skip the prompt, which is required in non-interactive shells such as CI.
+With flavors, each flavor gets:
 
-### `init`
+| | dev (example) | prod |
+| --- | --- | --- |
+| Entry point | `lib/main_dev.dart` | `lib/main_prod.dart` |
+| Android `applicationId` | `<id>.dev` | `<id>` |
+| iOS/macOS bundle ID | `<id>.dev` | `<id>` |
+| App name (Android label, iOS display name) | `My App Dev` | `My App` |
+| `AppConfig.baseUrl` | `https://dev.api.example.com/` | `https://api.example.com/` |
+| Network logs | on | off |
 
-Writes a default `flutter_project_builder.yaml` you can edit and share with
-your team.
+```bash
+flutter run --flavor dev                 # native flavor + matching Dart config
+flutter run                              # uses `default-flavor` (the first flavor)
+flutter build apk --flavor prod
+flutter build ipa --flavor prod
+flutter run -t lib/main_stage.dart       # Dart-only alternative
+flutter run --flavor dev --dart-define=BASE_URL=http://localhost:8080/
+```
 
-### `clean`
+- `lib/main.dart` reads Flutter's `appFlavor`, so the Dart `FlavorConfig`
+  always matches the native flavor.
+- Edit URLs and names in `lib/core/config/flavor_config.dart`; the Dio client
+  reads them through `appConfigProvider` (override it in tests).
+- Native setup: Android `productFlavors` in `android/app/build.gradle(.kts)`,
+  iOS/macOS `Debug-<flavor>`/`Profile-<flavor>`/`Release-<flavor>` build
+  configurations and a `<flavor>` scheme, plus matching CocoaPods mappings in
+  `ios/Podfile` and `macos/Podfile`. Flavors named `prod`/`production` keep
+  the base IDs.
+- Without flavors you still get `AppConfig` with a single base URL.
+- Use `--no-native-flavors` for Dart-only flavors.
 
-Deletes generated code: `lib/core`, `lib/features`, `lib/router`,
-`lib/app.dart`, `lib/bootstrap.dart`, `lib/main_<flavor>.dart` and tests
-starting with `// Generated by flutter_project_builder.`. Your own tests,
-`lib/main.dart`, `pubspec.yaml`, `l10n.yaml` and `lib/l10n/` are kept. It asks
-for confirmation, refuses to run on a project without the generation marker,
-and requires `--force` in non-interactive shells.
+## Firebase
 
-### `doctor`
+`--firebase` adds `firebase_core`, `lib/core/firebase/firebase_initializer.dart`
+and a placeholder `lib/firebase_options.dart`, and calls
+`FirebaseInitializer.initialize()` in `bootstrap.dart`. Because
+`firebase_core` requires iOS 15 and macOS 10.15, lower deployment targets are
+raised in the Xcode project, Podfile and `AppFrameworkInfo.plist` (projects
+created by older Flutter versions, such as 3.41 and 3.44, target iOS 13). Then connect your
+project:
 
-Prints the versions of `flutter`, `dart` and `git`. Exits with code 1 if
-`flutter` or `dart` is missing.
+```bash
+dart pub global activate flutterfire_cli
+flutterfire configure
+```
 
-### Global options
+Until you do, the app starts normally and logs
+`Firebase is not configured`. The placeholder is never overwritten once
+`flutterfire configure` has replaced it. Per-flavor Firebase projects are not
+configured automatically.
 
-`--version` (`-v`) prints the version, and `--verbose` prints stack traces
-for errors. Every command exits with a non-zero code on failure.
+## Other commands
+
+| Command | Description |
+| --- | --- |
+| `upgrade` | Regenerates `lib/core/` with the current templates using your saved options. Features, routes, entry points, native files, tests and your `AppConfig` values are kept. `--force` skips the prompt (required in CI), `--dry-run` previews. |
+| `init` | Writes a default `flutter_project_builder.yaml`. |
+| `clean` | Deletes generated code (`lib/core`, `lib/features`, `lib/router`, entry points, generated tests). Keeps `lib/main.dart`, your tests, translations, `firebase_options.dart` and native changes. Asks first; `--force` in CI. |
+| `doctor` | Checks `flutter`, `dart` and `git`; exits 1 if Flutter or Dart is missing. |
+
+Global options: `--version` (`-v`) and `--verbose` (stack traces on errors).
+Every command exits with a non-zero code on failure.
 
 ## Configuration file
 
-`flutter_project_builder.yaml` in the project root:
-
 ```yaml
 organization: com.mycompany
-template: clean
-flavors: [dev, qa, prod]   # any lowercase Dart identifiers
-riverpod: true
+template: enterprise        # preset for keys not listed here
+flavors: [dev, qa, prod]    # any lowercase Dart identifiers
+native_flavors: true
 firebase: false
 hive: true
 dio: true
 localization: true
 sample_features: true
+riverpod: true
 ```
 
-Options are resolved in this order: command-line options, then the config
-file, then the wizard, then defaults. Invalid files (unknown template, wrong
-value types, invalid flavor names) are reported with a clear message.
+Options resolve in this order: command-line options, the config file, the
+wizard, then the template preset. Invalid values (unknown template, bad
+organization, wrong types, invalid flavor names) produce a clear error.
 
 ## Generated structure
 
 ```text
 lib/
-├── app.dart                 # MyApp (MaterialApp.router)
-├── bootstrap.dart           # service initialisation + runApp
-├── main.dart                # (+ main_<flavor>.dart with flavors)
+├── app.dart                 # MyApp (MaterialApp.router, light/dark theme)
+├── bootstrap.dart           # Firebase, Hive, ProviderScope, runApp
+├── main.dart                # (+ main_<flavor>.dart)
+├── firebase_options.dart    # with --firebase
 ├── core/
-│   ├── config/              # FlavorConfig (with flavors)
-│   ├── constants/  enums/  errors/  exceptions/  extensions/
+│   ├── config/              # AppConfig (+ FlavorConfig)
+│   ├── constants/  enums/  errors/  exceptions/  extensions/  firebase/
 │   ├── logger/  network/  services/  storage/  theme/  utils/  widgets/
 ├── features/
-│   ├── home/presentation/pages/home_page.dart
-│   ├── counter/             # sample
-│   └── users/               # sample
+│   ├── home/  counter/  users/
+│   └── <your features>/{data,domain,presentation}/
 ├── l10n/app_en.arb
 └── router/                  # app_router.dart, route_names.dart
 test/
@@ -178,29 +224,28 @@ test/
 └── features/…
 ```
 
-Read the generated `ARCHITECTURE.md` for how the layers fit together.
+## Verified platforms
 
-## Using the generated project
+Tested on a macOS host with the `enterprise` template and `--org=io.acme`:
 
-- **Flavors:** `flutter run -t lib/main_dev.dart`. The tool does not configure
-  native Android product flavors or iOS schemes, so don't pass `--flavor`
-  unless you set those up yourself.
-- **Real API for the Users sample:** override `userRemoteDataSourceProvider`
-  with `DioUserRemoteDataSource(ref.watch(apiClientProvider))` and set
-  `baseUrl` in `lib/core/network/api_client.dart`.
-- **Storage:** read `storageServiceProvider`. It is initialised in
-  `bootstrap.dart`, and reading it in a test without an override throws a
-  descriptive error.
+| Platform | Flutter 3.47 | Flutter 3.41 / 3.44 |
+| --- | --- | --- |
+| Generated code (`analyze`, `test`) | ✅ | ✅ |
+| Android (`--flavor dev/prod`) | ✅ built; IDs and labels checked | ✅ built (3.44) |
+| iOS simulator (`--flavor dev`) | ✅ built and run | ⚠️ not buildable with Xcode 27 (affects any plugin app on these versions) |
+| macOS (`--flavor stage`) | ✅ built and run | – |
+| Web | ✅ built | – |
+| Linux, Windows | CI job (not run locally) | – |
+| Flutter 3.32 (minimum) | CI job (not run locally) | – |
 
 ## Limitations
 
-- `--template` and `--org` are recorded only (see the options table above).
-- `--no-riverpod` only omits the `AsyncValue` UI helpers. The generated code
+- `generate` does not remove routes or files; delete them by hand.
+- Re-running `create` with a new flavor adds its Xcode configuration, but an
+  existing Android `productFlavors` block is not rewritten (you get a
+  warning).
+- `--no-riverpod` only omits the `AsyncValue` UI helpers; the generated code
   always uses Riverpod.
-- `generate feature` creates folders only, not starter classes or routes.
-- The generated project has been verified on Flutter 3.47 (macOS, web and
-  Android builds). Older Flutter versions within the supported range have not
-  been tested directly.
 
 ## Contributing
 

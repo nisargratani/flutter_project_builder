@@ -142,10 +142,81 @@ void main() {
     );
   });
 
-  test('firebase option prepares lib/core/firebase', () async {
+  test('firebase option adds firebase_core and initialises it', () async {
     final project = createProject();
+    final options = File(p.join(project.path, 'lib', 'firebase_options.dart'));
     await generate(project, const ProjectConfig(firebase: true));
-    expect(exists(project, 'lib/core/firebase/.gitkeep'), isTrue);
+
+    expect(readFile(project, 'pubspec.yaml'), contains('firebase_core:'));
+    expect(
+      readFile(project, 'lib/bootstrap.dart'),
+      contains('await FirebaseInitializer.initialize();'),
+    );
+    expect(options.readAsStringSync(), contains('flutterfire configure'));
+
+    // A real `flutterfire configure` output is never overwritten.
+    options.writeAsStringSync('// real options');
+    await generate(project, const ProjectConfig(firebase: true));
+    expect(options.readAsStringSync(), '// real options');
+  });
+
+  test('environment config: per-flavor values, kept on upgrade', () async {
+    final project = createProject();
+    await generate(project, const ProjectConfig(flavors: ['dev', 'prod']));
+
+    final flavorConfig =
+        readFile(project, 'lib/core/config/flavor_config.dart');
+    expect(flavorConfig, contains("baseUrl: 'https://dev.api.example.com/'"));
+    expect(flavorConfig, contains("baseUrl: 'https://api.example.com/'"));
+    expect(flavorConfig, contains("appName: 'My App Dev'"));
+    expect(
+      readFile(project, 'lib/core/network/api_client.dart'),
+      contains('baseUrl: config.baseUrl'),
+    );
+    expect(readFile(project, 'lib/main.dart'), contains('appFlavor'));
+
+    final file = File(
+      p.join(project.path, 'lib', 'core', 'config', 'flavor_config.dart'),
+    )..writeAsStringSync('// my urls');
+    await generate(
+      project,
+      const ProjectConfig(flavors: ['dev', 'prod']),
+      upgradeMode: true,
+    );
+    expect(file.readAsStringSync(), '// my urls');
+  });
+
+  test('dark theme uses AppColors', () async {
+    final project = createProject();
+    await generate(project, const ProjectConfig());
+    final theme = readFile(project, 'lib/core/theme/app_theme.dart');
+    expect(theme, contains('primary: AppColors.primaryDark'));
+    expect(theme, contains('background: AppColors.backgroundDark'));
+  });
+
+  test('native step only runs with a custom org or native flavors', () async {
+    final project = createProject();
+    final generator = ProjectGenerator(
+      projectPath: project.path,
+      config: const ProjectConfig(flavors: ['dev']),
+      logger: CliLogger(useColors: false),
+    );
+    await generator.generate();
+    expect(
+      readFile(project, 'pubspec.yaml'),
+      contains('default-flavor: dev'),
+    );
+    expect(generator.warnings, isEmpty, reason: 'no platform folders');
+
+    final dartOnly = createProject();
+    await generate(
+      dartOnly,
+      const ProjectConfig(flavors: ['dev'], nativeFlavors: false),
+    );
+    expect(
+      readFile(dartOnly, 'pubspec.yaml'),
+      isNot(contains('default-flavor')),
+    );
   });
 
   test('does not overwrite translations or existing ARCHITECTURE.md', () async {
@@ -177,8 +248,13 @@ void main() {
   });
 
   test('dependenciesFor selects packages by option', () {
-    final all = ProjectGenerator.dependenciesFor(const ProjectConfig());
+    final all =
+        ProjectGenerator.dependenciesFor(const ProjectConfig(firebase: true));
     expect(all.keys, containsAll(PackageConstants.generatedDependencies.keys));
+    expect(
+      ProjectGenerator.dependenciesFor(const ProjectConfig()).keys,
+      isNot(contains('firebase_core')),
+    );
     final minimal = ProjectGenerator.dependenciesFor(
       const ProjectConfig(dio: false, hive: false, localization: false),
     );

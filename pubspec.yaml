@@ -1,9 +1,9 @@
 name: flutter_project_builder
 description: >-
-  CLI that scaffolds a Clean Architecture setup (Riverpod, GoRouter, Dio,
-  Hive CE, l10n, flavors, sample features and tests) into an existing Flutter
-  project.
-version: 0.1.0
+  CLI that scaffolds Clean Architecture into a Flutter app, configures native
+  flavors and app IDs, and generates features, pages, widgets, providers and
+  models.
+version: 0.0.1
 homepage: https://github.com/nisargratani/flutter_project_builder
 repository: https://github.com/nisargratani/flutter_project_builder
 issue_tracker: https://github.com/nisargratani/flutter_project_builder/issues
@@ -13,6 +13,7 @@ topics:
   - architecture
   - riverpod
   - code-generation
+  - flavors
 
 environment:
   sdk: ^3.4.0

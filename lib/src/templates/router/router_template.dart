@@ -4,6 +4,11 @@
 class RouterTemplate {
   RouterTemplate._();
 
+  /// Marker lines used by `generate` to register routes. Keep them.
+  static const String routesMarker = '// flutter_project_builder:routes';
+  static const String namesMarker = '// flutter_project_builder:route-names';
+  static const String pathsMarker = '// flutter_project_builder:route-paths';
+
   /// `lib/router/app_router.dart`.
   static String appRouter({required bool samples}) {
     final imports = [
@@ -17,7 +22,6 @@ class RouterTemplate {
     ].join('\n');
     final sampleRoutes = samples
         ? '''
-        routes: [
           GoRoute(
             path: RoutePaths.counter,
             name: RouteNames.counter,
@@ -28,7 +32,6 @@ class RouterTemplate {
             name: RouteNames.users,
             builder: (context, state) => const UsersPage(),
           ),
-        ],
 '''
         : '';
     return '''
@@ -46,7 +49,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.home,
         name: RouteNames.home,
         builder: (context, state) => const HomePage(),
-$sampleRoutes      ),
+        routes: [
+$sampleRoutes          $routesMarker
+        ],
+      ),
     ],
   );
   ref.onDispose(router.dispose);
@@ -55,7 +61,7 @@ $sampleRoutes      ),
 ''';
   }
 
-  static const String routeNames = r'''
+  static const String routeNames = '''
 /// Route names, used with `context.goNamed(...)`.
 class RouteNames {
   RouteNames._();
@@ -63,6 +69,7 @@ class RouteNames {
   static const String home = 'home';
   static const String counter = 'counter';
   static const String users = 'users';
+  $namesMarker
 }
 
 /// Route paths. Child paths are relative to their parent route.
@@ -72,6 +79,7 @@ class RoutePaths {
   static const String home = '/';
   static const String counter = 'counter';
   static const String users = 'users';
+  $pathsMarker
 }
 ''';
 

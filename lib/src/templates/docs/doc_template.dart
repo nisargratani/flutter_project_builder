@@ -31,17 +31,37 @@ logger, errors, utils) and routing in `lib/router/`.
 ## Startup
 
 `lib/main.dart` (and `lib/main_<flavor>.dart` when flavors are enabled) call
-`bootstrap()` in `lib/bootstrap.dart`, which initialises services and runs
-`MyApp` (`lib/app.dart`) inside a `ProviderScope`.
+`bootstrap()` in `lib/bootstrap.dart`, which initialises services (Firebase,
+Hive) and runs `MyApp` (`lib/app.dart`) inside a `ProviderScope`.
 
-## Adding a feature
+## Environments and flavors
+
+`lib/core/config/app_config.dart` holds per-environment settings (API base
+URL, app name, network logging), read through `appConfigProvider`; the Dio
+client uses it. With flavors, edit the values per flavor in
+`lib/core/config/flavor_config.dart`.
 
 ```bash
-flutter_project_builder generate feature profile
+flutter run --flavor dev          # native flavor + matching Dart config
+flutter run -t lib/main_prod.dart # Dart-only alternative
+flutter build apk --flavor prod --dart-define=BASE_URL=https://staging.example.com/
 ```
 
-Then add a route in `lib/router/app_router.dart` and its name/path in
-`lib/router/route_names.dart`.
+`--dart-define=BASE_URL=...` overrides the base URL at build time.
+
+## Adding code
+
+```bash
+flutter_project_builder generate feature profile --fields "id:int,name:String"
+flutter_project_builder generate page settings
+flutter_project_builder generate widget info_card
+flutter_project_builder generate provider cart --type async
+flutter_project_builder generate model address --fields "street:String,zip:int?"
+```
+
+Features and pages are registered in `lib/router/app_router.dart` (keep the
+`// flutter_project_builder:` marker comments there and in
+`route_names.dart`). Navigate with `context.goNamed(RouteNames.profile)`.
 
 ## Errors
 
@@ -53,9 +73,10 @@ into user-facing messages.
 
 ```bash
 flutter pub get   # also generates lib/l10n/app_localizations.dart
+flutterfire configure  # only if Firebase is enabled
 flutter analyze
 flutter test
-flutter run       # or: flutter run -t lib/main_<flavor>.dart
+flutter run       # with flavors: flutter run --flavor <name>
 ```
 ''';
 }

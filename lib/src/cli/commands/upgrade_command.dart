@@ -4,8 +4,10 @@ import 'package:args/command_runner.dart';
 
 import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
+import '../../utils/file_utils.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
+import '../dry_run_report.dart';
 
 /// Command to upgrade existing generated architecture.
 ///
@@ -19,12 +21,20 @@ class UpgradeCommand extends Command<int> {
     String Function()? workingDirectory,
   })  : _logger = logger,
         _workingDirectory = workingDirectory ?? (() => Directory.current.path) {
-    argParser.addFlag(
-      'force',
-      abbr: 'f',
-      help: 'Upgrade without prompting, even if no generation marker exists.',
-      negatable: false,
-    );
+    argParser
+      ..addFlag(
+        'force',
+        abbr: 'f',
+        help: 'Upgrade without prompting, even if no generation marker '
+            'exists.',
+        negatable: false,
+      )
+      ..addFlag(
+        'dry-run',
+        help: 'List the files that would be overwritten, without writing '
+            'anything.',
+        negatable: false,
+      );
   }
 
   @override
@@ -47,6 +57,18 @@ class UpgradeCommand extends Command<int> {
 
     final force = argResults!.flag('force');
     final config = ProjectConfig.fromDirectory(currentDir);
+
+    if (argResults!.flag('dry-run')) {
+      final recorder = await FileUtils.dryRun(
+        () => ProjectGenerator(
+          projectPath: currentDir,
+          config: config,
+          logger: _logger,
+        ).generate(upgradeMode: true),
+      );
+      printDryRun(_logger, recorder, currentDir);
+      return 0;
+    }
 
     if (!force) {
       if (!ProjectGenerator.isGenerated(currentDir)) {

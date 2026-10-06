@@ -1,7 +1,7 @@
 # flutter_project_builder: Usage Guide
 
-A walkthrough from installation to working in the generated project. See the
-[README](README.md) for the full option reference.
+A walkthrough from installation to day-to-day work in the generated project.
+See the [README](README.md) for the full option reference.
 
 ## 1. Install
 
@@ -17,114 +17,115 @@ macOS/Linux, `%LOCALAPPDATA%\Pub\Cache\bin` on Windows).
 The CLI works **inside an existing** Flutter project (Flutter 3.32+):
 
 ```bash
-flutter create my_awesome_app
-cd my_awesome_app
-flutter_project_builder create
-```
-
-In a terminal, the wizard asks for the template, organization, flavors,
-network, storage, localization, the Firebase folder and sample features. To
-skip it (for example in CI), pass options:
-
-```bash
-flutter_project_builder create --no-interactive
-flutter_project_builder create --flavors --firebase --no-sample
-```
-
-Then install dependencies (this also generates `lib/l10n/app_localizations.dart`)
-and run the generated tests:
-
-```bash
+flutter create my_app
+cd my_app
+flutter_project_builder create --dry-run --template=enterprise --org=com.mycompany  # preview
+flutter_project_builder create --template=enterprise --org=com.mycompany
 flutter pub get
 flutter test
-flutter run
 ```
 
-The options you chose are saved to `flutter_project_builder.yaml`. Commit it,
-so teammates and `upgrade` use the same settings.
+Pick a template:
 
-## 3. Share a configuration with your team
+- `basic`: core layer, theme, router and home page. A starting point for
+  small apps.
+- `clean` (default): adds Dio, Hive CE, localization and the Counter/Users
+  samples.
+- `enterprise`: `clean` plus dev/stage/prod flavors, configured natively for
+  Android and iOS/macOS.
+
+Any option overrides the template, e.g. `--template=enterprise --no-hive`.
+Without options in a terminal, a short wizard asks instead.
+
+The options are saved to `flutter_project_builder.yaml`. Commit it so your
+team and `upgrade` use the same settings.
+
+## 3. Run flavors
 
 ```bash
-flutter_project_builder init      # writes flutter_project_builder.yaml
-# edit it, commit it; then on any machine:
-flutter_project_builder create    # uses the file, no wizard
+flutter run --flavor dev         # Android/iOS/macOS flavor + Dart config
+flutter run                      # default-flavor (the first one)
+flutter build apk --flavor prod
 ```
 
-Command-line options override values from the file.
+- `dev` installs next to `prod` (app ID suffix `.dev`, name "My App Dev").
+- Set each flavor's API URL and app name in
+  `lib/core/config/flavor_config.dart`.
+- Override the URL for one build with
+  `--dart-define=BASE_URL=https://staging.example.com/`.
+- In code, use `ref.watch(appConfigProvider)` or `FlavorConfig.isDev`.
 
-## 4. Add features
+Custom flavor names go in the config file (`flavors: [dev, qa, prod]`) before
+running `create`. Flavors named `prod` or `production` keep the base app ID.
+
+## 4. Add code
 
 ```bash
-flutter_project_builder generate feature auth
+flutter_project_builder generate feature product --fields "id:int,title:String,price:double?"
 ```
+
+This creates a working, tested feature:
 
 ```text
-lib/features/auth/
-├── data/          datasource/  models/  repository/
-├── domain/        entities/  repository/  usecases/
-└── presentation/  pages/  providers/  widgets/
+lib/features/product/
+├── data/
+│   ├── datasource/product_remote_data_source.dart   # Mock + Dio
+│   ├── models/product_model.dart                    # fromJson / toJson
+│   └── repository/product_repository_impl.dart      # errors → Failure
+├── domain/
+│   ├── entities/product_entity.dart
+│   └── repository/product_repository.dart
+└── presentation/
+    ├── pages/product_page.dart                      # loading/error/empty/retry
+    └── providers/product_provider.dart              # AsyncNotifier
+test/features/product/product_notifier_test.dart
 ```
 
-- **Domain:** pure Dart entities and repository interfaces.
-- **Data:** models, data sources and repository implementations. Errors are
-  converted to `Failure`s with `ErrorMapper`.
-- **Presentation:** pages, widgets and Riverpod providers.
+It also registers a route: `context.goNamed(RouteNames.product)`. The feature
+uses mock data until you switch `productRemoteDataSourceProvider` to the Dio
+data source (see the comment in the provider file).
 
-Register pages in `lib/router/app_router.dart` and add their names and paths
-to `lib/router/route_names.dart`. The Users sample
-(`lib/features/users/`) shows every layer wired together.
-
-## 5. Core infrastructure
-
-- **Startup:** `main.dart` → `bootstrap()` (initialises Hive and overrides
-  `storageServiceProvider`) → `MyApp` in `app.dart`.
-- **Errors:** repositories throw `Failure` subclasses (`NetworkFailure`,
-  `CacheFailure`, `ValidationFailure`, `UnknownFailure`).
-  `FailureMessageResolver` turns them into UI messages.
-- **Networking:** `apiClientProvider` (Dio) with auth and logging interceptors.
-  Set your `baseUrl` in `lib/core/network/api_client.dart`.
-- **Storage:** `storageServiceProvider` (`HiveStorageService`).
-- **Localization:** add strings to `lib/l10n/app_en.arb` and add more
-  `app_<locale>.arb` files. `flutter pub get` regenerates the code.
-
-## 6. Flavors
-
-With flavors enabled you get `lib/main_<flavor>.dart` for each flavor:
+Smaller building blocks:
 
 ```bash
-flutter run -t lib/main_dev.dart
+flutter_project_builder generate page settings
+flutter_project_builder generate widget info_card
+flutter_project_builder generate provider cart --type async
+flutter_project_builder generate model address --fields "street:String,zip:int?" --feature profile
 ```
 
-```dart
-import 'core/config/flavor_config.dart';
+Add `--dry-run` to preview. Existing files are never overwritten. Quote
+`--fields`, because zsh treats `?` as a wildcard.
 
-if (FlavorConfig.isDev) {
-  // development-only behaviour
-}
-```
-
-`lib/main.dart` uses the first flavor. Native Android product flavors and iOS
-schemes are not generated; set them up yourself if you need
-`flutter run --flavor`.
-
-## 7. Upgrade generated core files
+## 5. Firebase
 
 ```bash
-git status                       # start from a clean tree
-flutter_project_builder upgrade  # or: upgrade --force in CI
-git diff                         # review
+flutter_project_builder create --firebase
+dart pub global activate flutterfire_cli
+flutterfire configure            # replaces lib/firebase_options.dart
 ```
 
-Only `lib/core/` is regenerated. Your features, routes, entry points and
-tests are left alone.
+Until then, the app starts normally and logs that Firebase is not configured.
 
-## 8. Maintenance
+## 6. Upgrade generated core files
+
+```bash
+git status                                 # start from a clean tree
+flutter_project_builder upgrade --dry-run  # see what changes
+flutter_project_builder upgrade            # or --force in CI
+git diff
+```
+
+Only `lib/core/` is regenerated, and your `AppConfig`/`FlavorConfig` values
+are kept.
+
+## 7. Maintenance
 
 ```bash
 flutter_project_builder doctor   # checks flutter, dart and git
 flutter_project_builder clean    # removes generated code (asks first)
 ```
 
-`clean` keeps `lib/main.dart`, your own tests, `pubspec.yaml` and your
-translations. Run `create` again to regenerate.
+`clean` keeps `lib/main.dart`, your own tests, translations,
+`firebase_options.dart` and native changes. Revert native changes with git
+if you need to.
