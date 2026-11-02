@@ -4,20 +4,20 @@ import 'package:args/command_runner.dart';
 import 'package:path/path.dart' as p;
 
 import '../../config/constants.dart';
-import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
-import '../../templates/tests/test_template.dart';
 import '../../utils/file_utils.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
 
 /// Command to clean generated architecture files.
 ///
-/// Removes `lib/core`, `lib/features`, `lib/router`, the generated entry
-/// points (`app.dart`, `bootstrap.dart`, `main_<flavor>.dart`), generated
-/// tests and the generation marker. `lib/main.dart`, `pubspec.yaml`,
-/// localization files (`l10n.yaml`, `lib/l10n/`), `lib/firebase_options.dart`
-/// and native project changes are left untouched.
+/// Deletes only the files listed in the generation marker
+/// `lib/.flutter_project_builder` (the code `create`, `upgrade` and
+/// `generate` wrote under `lib/` and `test/`), then the marker and the
+/// folders left empty. Files you added are kept, even inside generated
+/// folders. `lib/main.dart`, `pubspec.yaml`, localization files
+/// (`l10n.yaml`, `lib/l10n/`), `lib/firebase_options.dart` and native
+/// project changes are never deleted.
 class CleanCommand extends Command<int> {
   /// Creates a new [CleanCommand].
   CleanCommand({
@@ -28,7 +28,8 @@ class CleanCommand extends Command<int> {
     argParser.addFlag(
       'force',
       abbr: 'f',
-      help: 'Delete without prompting, even if no generation marker exists.',
+      help: 'Delete without prompting (required in non-interactive '
+          'environments).',
       negatable: false,
     );
   }
@@ -37,7 +38,11 @@ class CleanCommand extends Command<int> {
   String get name => 'clean';
 
   @override
-  String get description => 'Remove generated architecture files.';
+  String get description =>
+      'Remove the files flutter_project_builder generated.';
+
+  /// How many kept files are listed before the rest is summarised.
+  static const int _maxListedKeptFiles = 20;
 
   final CliLogger _logger;
   final String Function() _workingDirectory;
@@ -45,22 +50,34 @@ class CleanCommand extends Command<int> {
   @override
   Future<int> run() async {
     final currentDir = _workingDirectory();
+    const marker = 'lib/${PackageConstants.generatedMarkerFile}';
 
     if (!PubspecUtils.isFlutterProject(currentDir)) {
       _logger.error('No pubspec.yaml found or not a Flutter project.');
       return 1;
     }
 
-    final force = argResults!.flag('force');
+    if (!ProjectGenerator.isGenerated(currentDir)) {
+      _logger
+        ..error('No generated architecture found ($marker is missing).')
+        ..info('`clean` only deletes the files listed in $marker, so there '
+            'is nothing to delete.');
+      return 1;
+    }
 
-    if (!force) {
-      if (!ProjectGenerator.isGenerated(currentDir)) {
-        _logger
-          ..error('No generated architecture found '
-              '(lib/${PackageConstants.generatedMarkerFile} is missing).')
-          ..info('Pass --force to delete the generated folders anyway.');
-        return 1;
-      }
+    final listed = ProjectGenerator.generatedFiles(currentDir);
+    if (listed == null) {
+      _logger
+        ..error('$marker was written by flutter_project_builder 0.0.1 and '
+            'does not list the generated files, so `clean` cannot tell them '
+            'apart from yours. Nothing was deleted.')
+        ..info('Delete the generated files yourself. Projects set up with '
+            'flutter_project_builder 0.1.0 or newer list them in $marker.');
+      return 1;
+    }
+    final generated = listed.where(ProjectGenerator.isCleanable).toList();
+
+    if (!argResults!.flag('force')) {
       if (!stdin.hasTerminal) {
         _logger.error(
           'Refusing to delete files without confirmation. '
@@ -69,49 +86,48 @@ class CleanCommand extends Command<int> {
         return 1;
       }
       _logger.warning(
-        'This will delete lib/core, lib/features, lib/router, generated '
-        'entry points and generated tests.',
+        'This will delete the ${generated.length} files listed in $marker '
+        '(generated code in lib/ and test/). Files you added are kept.',
       );
       stdout.write('Are you sure you want to proceed? (y/N): ');
       final input = stdin.readLineSync()?.trim().toLowerCase();
+      if (input == null) {
+        // stdin is at end of file (e.g. `< /dev/null` in CI), which Dart
+        // reports as a terminal: no answer is not a "no".
+        _logger.error(
+          '\nNo answer (stdin is closed). '
+          'Re-run with --force in non-interactive environments.',
+        );
+        return 1;
+      }
       if (input != 'y' && input != 'yes') {
         _logger.info('Aborted.');
         return 0;
       }
     }
 
-    final lib = p.join(currentDir, 'lib');
-    final flavors = <String>{
-      ...PackageConstants.defaultFlavors,
-      ..._configuredFlavors(currentDir),
-    };
-
-    _logger.startProgress(total: 4);
     try {
-      _logger.step('Cleaning lib/core and lib/features...');
-      FileUtils.deleteDirectory(p.join(lib, 'core'));
-      FileUtils.deleteDirectory(p.join(lib, 'features'));
-
-      _logger.step('Cleaning lib/router...');
-      FileUtils.deleteDirectory(p.join(lib, 'router'));
-      // Never generated by current versions; kept for older projects.
-      FileUtils.deleteDirectory(p.join(lib, 'localization'));
-
-      _logger.step('Cleaning entry points...');
-      for (final file in [
-        'app.dart',
-        'bootstrap.dart',
-        for (final flavor in flavors) 'main_$flavor.dart',
-        PackageConstants.generatedMarkerFile,
-      ]) {
-        FileUtils.deleteFile(p.join(lib, file));
-      }
-
-      _logger.step('Cleaning generated tests...');
-      _deleteGeneratedTests(p.join(currentDir, 'test'));
-
       _logger
-        ..completeProgress()
+        ..startProgress(total: 2)
+        ..step('Deleting ${generated.length} generated files...');
+      final folders = <String>{};
+      for (final relative in generated) {
+        final path = p.joinAll([currentDir, ...relative.split('/')]);
+        if (!File(path).existsSync()) continue;
+        File(path).deleteSync();
+        folders.add(p.dirname(path));
+      }
+      FileUtils.deleteFile(ProjectGenerator.markerPath(currentDir));
+
+      _logger.step('Removing empty folders...');
+      final roots = [p.join(currentDir, 'lib'), p.join(currentDir, 'test')];
+      for (final folder in folders) {
+        _deleteEmptyFolders(folder, roots);
+      }
+      _logger.completeProgress();
+
+      _reportKeptFiles(currentDir, generated);
+      _logger
         ..info(
           'lib/main.dart still calls bootstrap(); restore it or run '
           '`flutter_project_builder create` again.',
@@ -128,32 +144,45 @@ class CleanCommand extends Command<int> {
     }
   }
 
-  List<String> _configuredFlavors(String projectPath) {
-    try {
-      return ProjectConfig.fromDirectory(projectPath).flavors;
-    } on FormatException {
-      return const [];
+  /// Deletes [folder] and then its parents while they are empty, stopping
+  /// at (and never deleting) the [roots]. A lone `.DS_Store` counts as
+  /// empty.
+  static void _deleteEmptyFolders(String folder, List<String> roots) {
+    var dir = Directory(folder);
+    while (
+        roots.any((root) => p.isWithin(root, dir.path)) && dir.existsSync()) {
+      final entries = dir.listSync();
+      if (entries.any((e) => p.basename(e.path) != '.DS_Store')) return;
+      dir.deleteSync(recursive: true);
+      dir = dir.parent;
     }
   }
 
-  /// Deletes test files that start with the generated header, then removes
-  /// directories left empty.
-  void _deleteGeneratedTests(String testPath) {
-    final dir = Directory(testPath);
-    if (!dir.existsSync()) return;
-
-    for (final file in dir.listSync(recursive: true).whereType<File>()) {
-      if (!file.path.endsWith('.dart')) continue;
-      final firstLine = file.readAsLinesSync().firstOrNull;
-      if (firstLine == TestTemplate.header) file.deleteSync();
-    }
-
-    final subdirectories =
-        dir.listSync(recursive: true).whereType<Directory>().toList()
-          // Deepest first so parents become empty after their children.
-          ..sort((a, b) => b.path.length.compareTo(a.path.length));
-    for (final sub in subdirectories) {
-      if (sub.listSync().isEmpty) sub.deleteSync();
+  /// Lists the files left in the folders `clean` deleted from (for example
+  /// your own code in `lib/features/`), so it is clear they were kept.
+  void _reportKeptFiles(String projectPath, List<String> generated) {
+    // Top-level generated folders such as lib/core, lib/features, test/core.
+    final folders = {
+      for (final relative in generated)
+        if (relative.split('/').length > 2)
+          relative.split('/').take(2).join('/'),
+    };
+    final kept = [
+      for (final folder in folders)
+        for (final path in FileUtils.listFiles(
+          p.joinAll([projectPath, ...folder.split('/')]),
+        ))
+          if (p.basename(path) != '.DS_Store')
+            p.split(p.relative(path, from: projectPath)).join('/'),
+    ]..sort();
+    if (kept.isEmpty) return;
+    _logger.info(
+      'Kept ${kept.length} file(s) that flutter_project_builder did not '
+      'generate:',
+    );
+    kept.take(_maxListedKeptFiles).forEach(_logger.detail);
+    if (kept.length > _maxListedKeptFiles) {
+      _logger.detail('... and ${kept.length - _maxListedKeptFiles} more');
     }
   }
 }

@@ -54,6 +54,11 @@ flutter_project_builder create
 flutter pub get
 ```
 
+`create` never overwrites your own files silently. It replaces `lib/main.dart`
+(and `test/widget_test.dart` while it is still the counter test from
+`flutter create`); if any other existing file would be overwritten, it lists
+them, writes nothing and exits 1. See [Existing projects](#existing-projects).
+
 ## Templates
 
 `--template` picks a preset; any option you pass explicitly overrides it.
@@ -94,17 +99,43 @@ tests.
 | `--[no-]localization` | on | `l10n.yaml`, `lib/l10n/app_en.arb`, delegates wired into `MaterialApp`. |
 | `--[no-]sample`, `-s` | on | Counter and Users sample features with routes and tests. |
 | `--dry-run` | | List files that would be created or overwritten; write nothing. |
-| `--force` | | Regenerate an already generated project (overwrites generated files). |
+| `--force` | | Regenerate an already generated project, and overwrite existing files that the architecture replaces (see below). |
 | `--[no-]interactive`, `-i` | on | Use the wizard when no options and no config file are given. |
 
 The effective options are saved to `flutter_project_builder.yaml`, so
 `upgrade` and `generate` reuse them. `create` refuses to run twice unless you
-pass `--force`.
+pass `--force`. Generated Dart files are formatted with `dart format`.
+
+### Existing projects
+
+Before writing anything in an existing project, `create` checks which files it
+would overwrite:
+
+- `pubspec.yaml` and the native projects (`android/`, `ios/`, `macos/`,
+  `linux/`, `windows/`) are edited in place; the rest of each file is kept.
+- `lib/main.dart` is replaced.
+- `test/widget_test.dart` is replaced only while it is still the unmodified
+  counter test from `flutter create`.
+- Any other existing file that would be overwritten (for example your own
+  `lib/app.dart`, `lib/core/theme/app_theme.dart` or
+  `lib/router/app_router.dart`) stops `create`: it lists the files, writes
+  nothing and exits 1. Move or rename them, or pass `--force` to overwrite
+  them. Files with exactly the generated content don't count.
+
+Existing dependency constraints are kept. If one excludes the version the
+generated code is written for (for example `flutter_riverpod: ^2.6.1` when it
+needs `^3.0.0`), `create` warns and prints the command that fixes it
+(`flutter pub add "flutter_riverpod:^3.0.0"`). An existing `l10n.yaml` and
+your translations are kept too, and `lib/app.dart` uses the class, file and
+`appTitle` message they define.
 
 ## Generating code
 
 Every target writes the code **and a test**, never overwrites existing files,
-and supports `--dry-run`.
+and supports `--dry-run`. When a source file already exists, it is kept and no
+test is written for it (you get a warning instead), because the generated test
+would not match your code. `generate` needs the architecture: run `create`
+first.
 
 ```bash
 # A complete feature: entity, repository contract, model, data source
@@ -123,11 +154,16 @@ flutter_project_builder generate model address --fields "street:String,zip:int?"
 
 - **Names** are converted to snake_case for files and PascalCase for classes
   (`UserProfile` → `user_profile.dart`, `UserProfilePage`). Invalid
-  identifiers, Dart keywords, paths like `../x`, and names that clash with
-  Flutter's own classes (e.g. `Badge`) are rejected.
+  identifiers, Dart keywords, paths like `../x`, and names that clash with a
+  `dart:core` type or a type visible through `package:flutter/material.dart`
+  (e.g. `String`, `Badge`, `EdgeInsets`) are rejected.
 - **`--fields`** accepts `String`, `int`, `double`, `num`, `bool` and
   `DateTime`, each optionally nullable (`?`). The default is `id:int,name:String`.
-  Quote the value: shells such as zsh treat `?` as a wildcard.
+  Quote the value: shells such as zsh treat `?` as a wildcard. Field names
+  are lowerCamelCase identifiers; built-in identifiers such as `type`, `get`
+  or `on` are fine, while reserved words (`class`, `new`, ...), `Object`
+  members and the names the generated code uses (`int`, `double`, `num`,
+  `bool`, `dynamic`, `identical`) are rejected.
 - **Routes:** features and pages are added as child routes of the home route,
   with `RouteNames`/`RoutePaths` constants (`context.goNamed(RouteNames.product)`).
   This relies on the `// flutter_project_builder:` marker comments in
@@ -145,9 +181,13 @@ With flavors, each flavor gets:
 | Entry point | `lib/main_dev.dart` | `lib/main_prod.dart` |
 | Android `applicationId` | `<id>.dev` | `<id>` |
 | iOS/macOS bundle ID | `<id>.dev` | `<id>` |
-| App name (Android label, iOS display name) | `My App Dev` | `My App` |
+| App name (Android label, iOS display name)¹ | `My App Dev` | `My App` |
 | `AppConfig.baseUrl` | `https://dev.api.example.com/` | `https://api.example.com/` |
 | Network logs | on | off |
+
+¹ Based on the app's current name when you customised it (`android:label`,
+`CFBundleDisplayName`), e.g. `Shop Pro` and `Shop Pro Dev`; otherwise on the
+package name. Each platform keeps its own name.
 
 ```bash
 flutter run --flavor dev                 # native flavor + matching Dart config
@@ -177,7 +217,7 @@ flutter run --flavor dev --dart-define=BASE_URL=http://localhost:8080/
 
 ## Firebase
 
-`--firebase` adds `firebase_core`, `lib/core/firebase/firebase_initializer.dart`
+`--firebase` adds `firebase_core` (`^5.1.0`), `lib/core/firebase/firebase_initializer.dart`
 and a placeholder `lib/firebase_options.dart`, and calls
 `FirebaseInitializer.initialize()` in `bootstrap.dart`. Because
 `firebase_core` requires iOS 15 and macOS 10.15, lower deployment targets are
@@ -199,9 +239,9 @@ configured automatically.
 
 | Command | Description |
 | --- | --- |
-| `upgrade` | Regenerates `lib/core/` with the current templates using your saved options. Features, routes, entry points, tests and your `AppConfig` values are kept. With native flavors, missing flavor configurations and Podfile mappings are added. `--force` skips the prompt (required in CI), `--dry-run` previews. |
+| `upgrade` | Regenerates `lib/core/` with the current templates using your saved options. Features, routes, entry points, tests and your `AppConfig` values are kept. With native flavors, missing flavor configurations and Podfile mappings are added; a flavor that the Dart side doesn't have yet (`enum Flavor`, `lib/main_<flavor>.dart`) is reported with what to add. `--force` skips the prompt (required in CI), `--dry-run` previews. |
 | `init` | Writes a default `flutter_project_builder.yaml`. |
-| `clean` | Deletes generated code (`lib/core`, `lib/features`, `lib/router`, entry points, generated tests). Keeps `lib/main.dart`, your tests, translations, `firebase_options.dart` and native changes. Asks first; `--force` in CI. |
+| `clean` | Deletes only the files flutter_project_builder generated, as listed in `lib/.flutter_project_builder` (generated code in `lib/core`, `lib/features`, `lib/router`, the entry points and generated tests), then the folders left empty. Files you added are kept, even inside those folders, and listed. Never deletes `lib/main.dart`, translations, `firebase_options.dart`, `pubspec.yaml` or native changes. Asks first; `--force` in CI. |
 | `doctor` | Checks `flutter`, `dart` and `git`; exits 1 if Flutter or Dart is missing. |
 
 Global options: `--version` (`-v`) and `--verbose` (stack traces on errors).
@@ -211,16 +251,21 @@ Every command exits with a non-zero code on failure.
 
 ```yaml
 organization: com.mycompany
-template: enterprise        # preset for keys not listed here
+template: enterprise        # preset for the options not set here
 flavors: [dev, qa, prod]    # any lowercase Dart identifiers
-native_flavors: true
-firebase: false
-hive: true
-dio: true
-localization: true
-sample_features: true
-riverpod: true
+firebase: true
+# hive: true                # commented out: the preset's value applies
+# dio: true
+# localization: true
+# native_flavors: true
+# sample_features: true
+# riverpod: true
 ```
+
+`init` and `create` write every option, but options whose value equals the
+template preset are commented out. Changing `template:` later therefore
+selects that preset's values; uncomment an option to pin it. See
+[`example/flutter_project_builder.yaml`](example/flutter_project_builder.yaml).
 
 Options resolve in this order: command-line options, the config file, the
 wizard, then the template preset. Invalid values (unknown template, bad
@@ -269,6 +314,13 @@ in CI on GitHub-hosted runners:
 - Re-running `create` with a new flavor adds its Xcode configuration, but an
   existing Android `productFlavors` block is not rewritten (you get a
   warning).
+- `upgrade` with a new flavor in the config adds its native configuration but
+  not its Dart side, because `flavor_config.dart` holds your settings: add the
+  `Flavor` value, its `AppConfig` case and `lib/main_<flavor>.dart` yourself
+  (`upgrade` lists what is missing).
+- `clean` relies on the file list in `lib/.flutter_project_builder`. Projects
+  generated by 0.0.1 have no list, so `clean` refuses to delete anything
+  there.
 - `--no-riverpod` only omits the `AsyncValue` UI helpers; the generated code
   always uses Riverpod.
 

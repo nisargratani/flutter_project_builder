@@ -51,8 +51,11 @@ class CodeTemplate {
           .join('\n');
 
   static String _equality(String className, List<ModelField> fields) {
+    // Inside `==`, a field called `other` is shadowed by the parameter.
     final comparisons = fields
-        .map((f) => 'other.${f.name} == ${f.name}')
+        .map((f) => f.name == 'other'
+            ? 'other.other == this.other'
+            : 'other.${f.name} == ${f.name}')
         .join(' &&\n          ');
     final hashed = fields.map((f) => f.name).join(', ');
     return '''

@@ -7,20 +7,6 @@ import 'package:test/test.dart';
 
 import 'helpers.dart';
 
-/// Copies the real `flutter create` platform files from test/fixtures.
-Directory nativeProject() {
-  final project = createProject();
-  final fixtures = Directory(p.join('test', 'fixtures', 'native'));
-  for (final file in fixtures.listSync(recursive: true).whereType<File>()) {
-    final target = File(
-      p.join(project.path, p.relative(file.path, from: fixtures.path)),
-    );
-    target.parent.createSync(recursive: true);
-    file.copySync(target.path);
-  }
-  return project;
-}
-
 void main() {
   late Directory project;
   late NativeProject native;

@@ -12,6 +12,7 @@ import '../templates/router/router_template.dart';
 import '../utils/file_utils.dart';
 import '../utils/native_project.dart';
 import '../utils/pubspec_utils.dart';
+import '../utils/sdk_type_names.dart';
 import '../utils/string_utils.dart';
 import 'model_field.dart';
 
@@ -101,39 +102,40 @@ class FeatureGenerator {
 
   static Set<String>? _flutterClasses;
 
-  /// Public class names declared by the installed Flutter SDK's material,
-  /// cupertino and widgets libraries (empty if the SDK cannot be found).
+  /// Public type names of the installed Flutter SDK that generated code can
+  /// see or that would be confusing to shadow: everything
+  /// `package:flutter/material.dart` exports (including `dart:ui` and the
+  /// painting, foundation, ... types it re-exports), plus the classes of
+  /// the material, cupertino and widgets libraries. Empty if the SDK cannot
+  /// be found.
   static Set<String> get flutterClassNames => _flutterClasses ??= () {
         final root = NativeProject.flutterRoot();
         if (root == null) return <String>{};
-        final pattern = RegExp(
-          '^(?:abstract |base |final |sealed |interface |mixin )*'
-          r'class ([A-Z]\w*)',
-          multiLine: true,
-        );
-        final names = <String>{};
+        final names = SdkTypeNames.material(root);
         for (final library in ['material', 'cupertino', 'widgets']) {
           final dir = Directory(
             p.join(root, 'packages', 'flutter', 'lib', 'src', library),
           );
           if (!dir.existsSync()) continue;
           for (final file in dir.listSync().whereType<File>()) {
-            names.addAll(
-              pattern.allMatches(file.readAsStringSync()).map((m) => m[1]!),
-            );
+            names.addAll(SdkTypeNames.declaredIn(file.readAsStringSync()));
           }
         }
         return names;
       }();
 
   static void _checkClassName(String className) {
-    final clashesWithFlutter = flutterClassNames.contains(className);
-    if (_reservedClassNames.contains(className) || clashesWithFlutter) {
+    final owner = SdkTypeNames.dartCore.contains(className)
+        ? "dart:core's $className"
+        : flutterClassNames.contains(className)
+            ? "Flutter's own $className"
+            : _reservedClassNames.contains(className)
+                ? 'an existing Flutter or project type'
+                : null;
+    if (owner != null) {
       throw FormatException(
-        'The generated class "$className" would clash with '
-        '${clashesWithFlutter ? "Flutter's own $className" : 'an existing '
-            'Flutter or project type'}. Choose another name (for example '
-        'prefix it with your feature).',
+        'The generated class "$className" would clash with $owner. Choose '
+        'another name (for example prefix it with your feature).',
       );
     }
   }
@@ -145,10 +147,33 @@ class FeatureGenerator {
   String get _package =>
       PubspecUtils.getProjectName(projectPath) ?? p.basename(projectPath);
 
-  void _write(GenerationReport report, String relative, String content) {
+  /// Writes [content] to [relative] unless the file exists; returns
+  /// whether it was written.
+  bool _write(GenerationReport report, String relative, String content) {
     final written =
         FileUtils.createFileIfAbsent(p.join(projectPath, relative), content);
     (written ? report.created : report.skipped).add(relative);
+    return written;
+  }
+
+  /// Writes a generated test, unless code it tests already existed and was
+  /// kept ([keptSources]): that code has its own API, so the template's test
+  /// would not compile or pass against it.
+  void _writeTest(
+    GenerationReport report,
+    String relative,
+    String content, {
+    required List<String> keptSources,
+  }) {
+    if (keptSources.isNotEmpty &&
+        !FileUtils.fileExists(p.join(projectPath, relative))) {
+      report.warnings.add(
+        'Did not write $relative: ${keptSources.join(', ')} already '
+        'existed, and the generated test would not match it.',
+      );
+      return;
+    }
+    _write(report, relative, content);
   }
 
   // ── Feature ────────────────────────────────────────────────────────
@@ -185,8 +210,10 @@ class FeatureGenerator {
       'presentation/pages/${n.snake}_page.dart':
           CodeTemplate.featurePage(n, fields),
     };
+    final kept = <String>[];
     for (final entry in files.entries) {
-      _write(report, p.join(base, entry.key), entry.value);
+      final relative = p.join(base, entry.key);
+      if (!_write(report, relative, entry.value)) kept.add(relative);
     }
     for (final folder in ['domain/usecases', 'presentation/widgets']) {
       final dir = p.join(projectPath, base, folder);
@@ -194,10 +221,12 @@ class FeatureGenerator {
         _write(report, p.join(base, folder, '.gitkeep'), '');
       }
     }
-    _write(
+    // The test drives the notifier, repository and data source together.
+    _writeTest(
       report,
       p.join('test', 'features', n.snake, '${n.snake}_notifier_test.dart'),
       CodeTemplate.featureTest(n, fields, _package),
+      keptSources: kept,
     );
 
     if (registerRoute) {
@@ -222,18 +251,16 @@ class FeatureGenerator {
     final report = GenerationReport();
     final dir = 'features/$featureName/presentation/pages';
 
-    _write(
-      report,
-      p.join('lib', dir, '${n.snake}_page.dart'),
-      CodeTemplate.page(n),
-    );
-    _write(
+    final source = p.join('lib', dir, '${n.snake}_page.dart');
+    final written = _write(report, source, CodeTemplate.page(n));
+    _writeTest(
       report,
       p.join('test', 'features', featureName, '${n.snake}_page_test.dart'),
       CodeTemplate.pageTest(
         n,
         'package:$_package/$dir/${n.snake}_page.dart',
       ),
+      keptSources: [if (!written) source],
     );
     if (registerRoute) _registerRoute(n, dir, report);
     return report;
@@ -255,15 +282,13 @@ class FeatureGenerator {
         ? p.join('test', 'core', 'widgets')
         : p.join('test', 'features', normalizeName(feature));
 
-    _write(
-      report,
-      p.join('lib', dir, '${n.snake}.dart'),
-      CodeTemplate.widget(n),
-    );
-    _write(
+    final source = p.join('lib', dir, '${n.snake}.dart');
+    final written = _write(report, source, CodeTemplate.widget(n));
+    _writeTest(
       report,
       p.join(testDir, '${n.snake}_test.dart'),
       CodeTemplate.widgetTest(n, 'package:$_package/$dir/${n.snake}.dart'),
+      keptSources: [if (!written) source],
     );
     return report;
   }
@@ -277,19 +302,22 @@ class FeatureGenerator {
   }) async {
     final n = Names(normalizeName(name));
     final featureName = normalizeName(feature ?? name);
+    final isAsync = kind == ProviderKind.async;
     _checkClassName('${n.pascal}Notifier');
+    // A notifier provider also declares its state class.
+    if (!isAsync) _checkClassName('${n.pascal}State');
     final report = GenerationReport();
     final dir = 'features/$featureName/presentation/providers';
-    final isAsync = kind == ProviderKind.async;
 
-    _write(
+    final source = p.join('lib', dir, '${n.snake}_provider.dart');
+    final written = _write(
       report,
-      p.join('lib', dir, '${n.snake}_provider.dart'),
+      source,
       isAsync
           ? CodeTemplate.asyncProvider(n)
           : CodeTemplate.notifierProvider(n),
     );
-    _write(
+    _writeTest(
       report,
       p.join('test', 'features', featureName, '${n.snake}_provider_test.dart'),
       CodeTemplate.providerTest(
@@ -297,6 +325,7 @@ class FeatureGenerator {
         'package:$_package/$dir/${n.snake}_provider.dart',
         isAsync: isAsync,
       ),
+      keptSources: [if (!written) source],
     );
     return report;
   }
@@ -314,12 +343,9 @@ class FeatureGenerator {
     final report = GenerationReport();
     final dir = 'features/$featureName/data/models';
 
-    _write(
-      report,
-      p.join('lib', dir, '${n.snake}_model.dart'),
-      CodeTemplate.model(n, fields),
-    );
-    _write(
+    final source = p.join('lib', dir, '${n.snake}_model.dart');
+    final written = _write(report, source, CodeTemplate.model(n, fields));
+    _writeTest(
       report,
       p.join('test', 'features', featureName, '${n.snake}_model_test.dart'),
       CodeTemplate.modelTest(
@@ -327,6 +353,7 @@ class FeatureGenerator {
         fields,
         'package:$_package/$dir/${n.snake}_model.dart',
       ),
+      keptSources: [if (!written) source],
     );
     return report;
   }

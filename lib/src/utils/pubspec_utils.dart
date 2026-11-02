@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as p;
+import 'package:pub_semver/pub_semver.dart';
 import 'package:yaml/yaml.dart';
 import 'package:yaml_edit/yaml_edit.dart';
 
@@ -77,6 +78,45 @@ class PubspecUtils {
 
     if (added.isNotEmpty) FileUtils.createFile(path, editor.toString());
     return added;
+  }
+
+  /// Returns the packages of [required] (name → version constraint, as in
+  /// [addDependencies]) that `pubspec.yaml` in [projectPath] already
+  /// declares with a constraint that allows none of the required versions,
+  /// mapped to that existing constraint.
+  ///
+  /// For example `flutter_riverpod: ^2.6.1` when the generated code needs
+  /// `^3.0.0`. [addDependencies] keeps existing constraints, so these must be
+  /// reported. SDK, path and git dependencies, `any`, and packages listed in
+  /// `dependency_overrides` are not checked.
+  static Map<String, String> incompatibleConstraints(
+    String projectPath,
+    Map<String, String> required,
+  ) {
+    final pubspec = _load(projectPath);
+    if (pubspec == null) return const {};
+    final overrides = pubspec['dependency_overrides'];
+    final result = <String, String>{};
+    for (final MapEntry(key: name, value: wanted) in required.entries) {
+      if (wanted == 'any' || wanted.startsWith('sdk:')) continue;
+      if (overrides is Map && overrides.containsKey(name)) continue;
+      for (final section in _dependencySections) {
+        final deps = pubspec[section];
+        final declared = deps is Map ? deps[name] : null;
+        // `name: ^1.0.0`, or a hosted map with an explicit `version:`.
+        final existing = declared is Map ? declared['version'] : declared;
+        if (existing is! String) continue;
+        try {
+          if (!VersionConstraint.parse(existing)
+              .allowsAny(VersionConstraint.parse(wanted))) {
+            result[name] = existing;
+          }
+        } on FormatException {
+          // Not a version constraint; `pub get` will report it.
+        }
+      }
+    }
+    return result;
   }
 
   /// Enables Flutter's localization code generation by setting

@@ -7,8 +7,12 @@ import 'package:test/test.dart';
 import 'helpers.dart';
 
 /// Records `flutter` invocations; `flutter create` writes a minimal project.
+/// `dart` invocations (`dart format`) are recorded in [dartCalls], and
+/// [log] keeps the order of both (`flutter pub`, `dart format`, ...).
 class FakeFlutter {
   final List<List<String>> calls = [];
+  final List<List<String>> dartCalls = [];
+  final List<String> log = [];
   int createExitCode = 0;
   bool missing = false;
 
@@ -19,7 +23,12 @@ class FakeFlutter {
     List<String> arguments, {
     String? workingDirectory,
   }) async {
-    if (missing) throw const ProcessException('flutter', []);
+    if (missing) throw ProcessException(executable, arguments);
+    log.add('$executable ${arguments.first}');
+    if (executable == 'dart') {
+      dartCalls.add(arguments);
+      return ProcessResult(0, 0, '', '');
+    }
     calls.add(arguments);
     if (arguments.first == 'create') {
       if (createExitCode != 0) {
@@ -74,6 +83,15 @@ void main() {
     ]);
     expect(flutter.calls.last, ['pub', 'get']);
     expect(exists(project('my_shop'), 'lib/app.dart'), isTrue);
+    // The generated Dart files are formatted after `pub get`.
+    expect(flutter.log.last, 'dart format');
+    expect(
+      flutter.log.indexOf('dart format'),
+      greaterThan(flutter.log.indexOf('flutter pub')),
+    );
+    final formatted = flutter.dartCalls.expand((call) => call).toList();
+    expect(formatted, contains(p.join('lib', 'app.dart')));
+    expect(formatted, isNot(contains('pubspec.yaml')));
     expect(
       ProjectConfig.fromDirectory(project('my_shop').path).organization,
       'com.acme',

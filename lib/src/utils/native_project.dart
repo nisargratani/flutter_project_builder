@@ -34,8 +34,90 @@ class NativeProject {
   /// Flavors that keep the base application ID and display name.
   static const Set<String> productionFlavors = {'prod', 'production'};
 
-  /// Human-readable app name derived from the package name (`My App`).
+  /// Human-readable app name derived from the package name (`My App`),
+  /// used where the native project has no customised name.
   String get displayName => StringUtils.toTitleCase(packageName);
+
+  /// The Android app name: a literal `android:label` in the manifest when it
+  /// was customised, otherwise [displayName].
+  ///
+  /// Production flavors use it as is; other flavors append their name.
+  late final String androidAppName = _customName(
+        RegExp('android:label="([^"]*)"').firstMatch(
+          FileUtils.readFile(
+                _path('android/app/src/main/AndroidManifest.xml'),
+              ) ??
+              '',
+        )?[1],
+      ) ??
+      displayName;
+
+  /// The iOS app name: a literal `CFBundleDisplayName` in `Info.plist` when
+  /// it was customised, or the `APP_DISPLAY_NAME` an earlier run moved it
+  /// to (on the Runner's base configurations), otherwise [displayName].
+  ///
+  /// Production flavors use it as is; other flavors append their name.
+  late final String iosAppName = _customName(
+        RegExp(r'<key>CFBundleDisplayName</key>\s*<string>([^<]*)</string>')
+            .firstMatch(
+          FileUtils.readFile(_path('ios/Runner/Info.plist')) ?? '',
+        )?[1],
+      ) ??
+      _customName(_runnerBaseDisplayName()) ??
+      displayName;
+
+  /// [name] (XML-unescaped) if it is a literal, customised app name:
+  /// not the package name, not a reference such as `$(...)`, `${...}` or
+  /// `@string/...`, and free of quotes and backslashes (it is written into
+  /// Gradle and Xcode strings).
+  String? _customName(String? name) {
+    final value = name
+        ?.replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'")
+        .replaceAll('&amp;', '&')
+        .trim();
+    if (value == null ||
+        value.isEmpty ||
+        value == packageName ||
+        value.startsWith('@') ||
+        value.contains(RegExp(r'[$"\\]'))) {
+      return null;
+    }
+    return value;
+  }
+
+  /// `APP_DISPLAY_NAME` of the iOS Runner target's Release (or Debug,
+  /// Profile) configuration, or `null`. Flavor configurations are ignored:
+  /// their names include the flavor.
+  String? _runnerBaseDisplayName() {
+    final content =
+        FileUtils.readFile(_path('ios/Runner.xcodeproj/project.pbxproj'));
+    if (content == null) return null;
+    final runner = _configurationListPattern
+        .allMatches(content)
+        .where((list) => list[1] == 'PBXNativeTarget' && list[2] == 'Runner')
+        .firstOrNull;
+    if (runner == null) return null;
+    final ids = {
+      for (final entry in _listEntryPattern.allMatches(runner[3]!))
+        entry[2]!: entry[1]!,
+    };
+    final configurations = {
+      for (final m in _buildConfigurationPattern.allMatches(content))
+        m[1]!: m[0]!,
+    };
+    for (final base in ['Release', 'Debug', 'Profile']) {
+      final object = configurations[ids[base]];
+      final value = object == null
+          ? null
+          : RegExp(r'\t\t\t\tAPP_DISPLAY_NAME = "?([^";]*)"?;')
+              .firstMatch(object)?[1];
+      if (value != null) return value;
+    }
+    return null;
+  }
 
   /// Android application ID / Linux application ID for [organization].
   String androidIdFor(String organization) => '$organization.$packageName';
@@ -162,9 +244,11 @@ class NativeProject {
   String _suffixFor(String flavor) =>
       productionFlavors.contains(flavor) ? '' : '.$flavor';
 
-  String _nameFor(String flavor) => productionFlavors.contains(flavor)
-      ? displayName
-      : '$displayName ${StringUtils.toTitleCase(flavor)}';
+  /// The app name of [flavor], based on [appName] (Android or iOS).
+  static String _nameFor(String appName, String flavor) =>
+      productionFlavors.contains(flavor)
+          ? appName
+          : '$appName ${StringUtils.toTitleCase(flavor)}';
 
   String? _gradleFile() {
     for (final name in ['build.gradle.kts', 'build.gradle']) {
@@ -243,7 +327,8 @@ class NativeProject {
       }
       buffer
         ..writeln(
-          '            manifestPlaceholders["appName"] = "${_nameFor(flavor)}"',
+          '            manifestPlaceholders["appName"] = '
+          '"${_nameFor(androidAppName, flavor)}"',
         )
         ..writeln('        }');
     }
@@ -265,7 +350,8 @@ class NativeProject {
       }
       buffer
         ..writeln(
-          '            manifestPlaceholders = [appName: "${_nameFor(flavor)}"]',
+          '            manifestPlaceholders = '
+          '[appName: "${_nameFor(androidAppName, flavor)}"]',
         )
         ..writeln('        }');
     }
@@ -368,7 +454,7 @@ class NativeProject {
           configEdits[baseObject] = _setBuildSetting(
             baseObject,
             'APP_DISPLAY_NAME',
-            '"$displayName"',
+            '"$iosAppName"',
             onlyIfMissing: true,
           );
         }
@@ -391,7 +477,7 @@ class NativeProject {
               clone = _setBuildSetting(
                 clone,
                 'APP_DISPLAY_NAME',
-                '"${_nameFor(flavor)}"',
+                '"${_nameFor(iosAppName, flavor)}"',
               );
             }
           }

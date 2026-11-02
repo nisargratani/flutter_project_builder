@@ -25,8 +25,9 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
   /// Creates a new [FlutterProjectBuilderCommandRunner].
   ///
   /// Commands operate on [workingDirectory], which defaults to the current
-  /// directory of the process. [flutter] runs the `flutter` tool (used by
-  /// `create <directory>`); replace it in tests.
+  /// directory of the process. [flutter] runs the `flutter` and `dart`
+  /// tools (`flutter create`, `flutter pub get`, `dart format`); replace it
+  /// in tests.
   FlutterProjectBuilderCommandRunner({
     CliLogger? logger,
     String? workingDirectory,
@@ -50,15 +51,20 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
       );
 
     String cwd() => workingDirectory ?? Directory.current.path;
+    final cli = flutter ?? FlutterCli();
 
     addCommand(
-      CreateCommand(logger: _logger, workingDirectory: cwd, flutter: flutter),
+      CreateCommand(logger: _logger, workingDirectory: cwd, flutter: cli),
     );
     addCommand(DoctorCommand(logger: _logger, workingDirectory: cwd));
     addCommand(CleanCommand(logger: _logger, workingDirectory: cwd));
-    addCommand(UpgradeCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(
+      UpgradeCommand(logger: _logger, workingDirectory: cwd, flutter: cli),
+    );
     addCommand(InitCommand(logger: _logger, workingDirectory: cwd));
-    addCommand(GenerateCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(
+      GenerateCommand(logger: _logger, workingDirectory: cwd, flutter: cli),
+    );
   }
 
   final CliLogger _logger;
@@ -77,7 +83,8 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
       }
 
       if (topLevelResults.flag('version')) {
-        _logger.info(PackageConstants.version);
+        // The bare version, so scripts can compare it.
+        _logger.write(PackageConstants.version);
         return 0;
       }
 

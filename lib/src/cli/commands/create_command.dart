@@ -12,6 +12,7 @@ import '../../utils/pubspec_utils.dart';
 import '../../utils/string_utils.dart';
 import '../cli_logger.dart';
 import '../dry_run_report.dart';
+import '../quiet_logger.dart';
 
 /// Command to create a new Flutter project architecture.
 ///
@@ -111,8 +112,8 @@ class CreateCommand extends Command<int> {
       )
       ..addFlag(
         'force',
-        help: 'Regenerate even if the architecture was already generated. '
-            'Overwrites generated files.',
+        help: 'Regenerate even if the architecture was already generated, '
+            'and overwrite existing files that the architecture replaces.',
         negatable: false,
       )
       ..addOption(
@@ -299,6 +300,28 @@ class CreateCommand extends Command<int> {
       }
     }
 
+    if (!dryRun && !needsFlutterCreate && !results.flag('force')) {
+      final conflicts = await _conflictingFiles(currentDir, config);
+      if (conflicts.isNotEmpty) {
+        _logger.error(
+          'Nothing was written: these existing files would be overwritten by '
+          'the generated architecture:',
+        );
+        conflicts.forEach(_logger.detail);
+        if (conflicts.contains(_widgetTest)) {
+          _logger.info(
+            '$_widgetTest is only replaced without --force while it is still '
+            'the counter test from `flutter create`.',
+          );
+        }
+        _logger.info(
+          'Move or rename them, or re-run with --force to overwrite them. '
+          'Add --dry-run to preview every change.',
+        );
+        return 1;
+      }
+    }
+
     try {
       if (dryRun) {
         final recorder = await FileUtils.dryRun(generate);
@@ -335,6 +358,9 @@ class CreateCommand extends Command<int> {
         'the flavors are also mapped in any Podfile Flutter creates.',
       );
     }
+
+    // After `pub get`, so the formatter uses the project's language version.
+    await _flutter.formatDart(currentDir, generator.writtenFiles);
 
     final firstFlavor = config.hasFlavors ? config.flavors.first : null;
     _logger.nextSteps([
@@ -374,6 +400,54 @@ class CreateCommand extends Command<int> {
       'Firebase': _yesNo(config.firebase),
       'Samples': _yesNo(config.sampleFeatures),
     });
+  }
+
+  static const String _widgetTest = 'test/widget_test.dart';
+
+  /// Folders whose files `create` edits in place (application IDs, flavors),
+  /// keeping the rest of each file.
+  static const Set<String> _nativeFolders = {
+    'android',
+    'ios',
+    'macos',
+    'linux',
+    'windows',
+  };
+
+  /// The existing files (project-relative, `/`-separated) that generating
+  /// [config] in [projectPath] would overwrite, apart from the ones `create`
+  /// is meant to change: `pubspec.yaml` and the native projects (edited in
+  /// place), `lib/main.dart` (replaced), and `test/widget_test.dart` while
+  /// it is still the `flutter create` counter test.
+  Future<List<String>> _conflictingFiles(
+    String projectPath,
+    ProjectConfig config,
+  ) async {
+    final preview = ProjectGenerator(
+      projectPath: projectPath,
+      config: config,
+      logger: QuietLogger(),
+    );
+    final recorder = await FileUtils.dryRun(preview.generate);
+    final projectName =
+        PubspecUtils.getProjectName(projectPath) ?? p.basename(projectPath);
+
+    bool replacedByDesign(String path) => switch (path) {
+          'pubspec.yaml' || 'lib/main.dart' => true,
+          _widgetTest => FlutterCli.isDefaultWidgetTest(
+              File(p.join(projectPath, _widgetTest)).readAsStringSync(),
+              projectName,
+            ),
+          _ => _nativeFolders.contains(path.split('/').first),
+        };
+
+    return [
+      for (final MapEntry(key: path, value: change)
+          in recorder.changes().entries)
+        if (change == FileChange.overwrite)
+          p.split(p.relative(path, from: projectPath)).join('/'),
+    ].where((path) => !replacedByDesign(path)).toList()
+      ..sort();
   }
 
   static bool _isMissingOrEmpty(String path) {

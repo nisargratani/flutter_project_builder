@@ -254,41 +254,56 @@ class ProjectConfig {
 
   /// Generates YAML content for this configuration.
   ///
-  /// The output can be parsed back with [ProjectConfig.fromYaml].
-  String toYaml() => '''
+  /// The output can be parsed back with [ProjectConfig.fromYaml]. Options
+  /// whose value equals the [template] preset are written as comments, so
+  /// changing `template:` later still selects that preset's values.
+  String toYaml() {
+    final preset = ProjectConfig.forTemplate(template);
+    String option(String key, Object value, Object presetValue) {
+      final text =
+          value is List ? '$key: [${value.join(', ')}]' : '$key: $value';
+      final same = value is List && presetValue is List
+          ? value.join(',') == presetValue.join(',')
+          : value == presetValue;
+      return same ? '# $text' : text;
+    }
+
+    return '''
 # flutter_project_builder configuration
-# This file configures the architecture generation.
+# Options that are commented out use the value of the template preset;
+# uncomment one to override it.
 
 # Used for the Android application ID and iOS/macOS bundle identifiers.
 organization: $organization
 
-# Preset for options not listed here: basic, clean, enterprise
+# Preset for the options not set here: basic, clean, enterprise
 template: $template
 
 # Flavor names; each produces lib/main_<flavor>.dart
-${flavors.isEmpty ? 'flavors: []' : 'flavors:\n${flavors.map((f) => '  - $f').join('\n')}'}
+${option('flavors', flavors, preset.flavors)}
 
 # Configure Android product flavors and Xcode schemes for the flavors
-native_flavors: $nativeFlavors
+${option('native_flavors', nativeFlavors, preset.nativeFlavors)}
 
 # State management
-riverpod: $riverpod
+${option('riverpod', riverpod, preset.riverpod)}
 
 # Firebase (firebase_core); run `flutterfire configure` afterwards
-firebase: $firebase
+${option('firebase', firebase, preset.firebase)}
 
 # Local storage
-hive: $hive
+${option('hive', hive, preset.hive)}
 
 # Networking
-dio: $dio
+${option('dio', dio, preset.dio)}
 
 # Localization
-localization: $localization
+${option('localization', localization, preset.localization)}
 
 # Sample features
-sample_features: $sampleFeatures
+${option('sample_features', sampleFeatures, preset.sampleFeatures)}
 ''';
+  }
 
   static List<String> _parseFlavors(Object? value, String sourceName) {
     if (value == null) return const [];

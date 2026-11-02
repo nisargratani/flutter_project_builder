@@ -2,7 +2,7 @@
 
 /// Template builders for the generated project's tests.
 ///
-/// Every generated test starts with [header] so `clean` can recognise it.
+/// Every generated test starts with [header], which marks it as generated.
 class TestTemplate {
   TestTemplate._();
 

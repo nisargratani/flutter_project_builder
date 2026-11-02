@@ -1,11 +1,15 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
 
+import '../../config/constants.dart';
 import '../../config/project_config.dart';
 import '../../generators/feature_generator.dart';
 import '../../generators/model_field.dart';
+import '../../generators/project_generator.dart';
 import '../../utils/file_utils.dart';
+import '../../utils/flutter_cli.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
 import '../dry_run_report.dart';
@@ -13,20 +17,26 @@ import '../dry_run_report.dart';
 /// Command to scaffold features and their building blocks.
 class GenerateCommand extends Command<int> {
   /// Creates a new [GenerateCommand].
+  ///
+  /// [flutter] runs `dart format` on the generated files.
   GenerateCommand({
     required CliLogger logger,
     String Function()? workingDirectory,
+    FlutterCli? flutter,
   }) {
     final cwd = workingDirectory ?? (() => Directory.current.path);
-    addSubcommand(
-      GenerateFeatureCommand(logger: logger, workingDirectory: cwd),
-    );
-    addSubcommand(GeneratePageCommand(logger: logger, workingDirectory: cwd));
-    addSubcommand(GenerateWidgetCommand(logger: logger, workingDirectory: cwd));
-    addSubcommand(
-      GenerateProviderCommand(logger: logger, workingDirectory: cwd),
-    );
-    addSubcommand(GenerateModelCommand(logger: logger, workingDirectory: cwd));
+    final cli = flutter ?? FlutterCli();
+    for (final command in [
+      GenerateFeatureCommand.new,
+      GeneratePageCommand.new,
+      GenerateWidgetCommand.new,
+      GenerateProviderCommand.new,
+      GenerateModelCommand.new,
+    ]) {
+      addSubcommand(
+        command(logger: logger, workingDirectory: cwd, flutter: cli),
+      );
+    }
   }
 
   @override
@@ -42,8 +52,10 @@ abstract class _GenerateTargetCommand extends Command<int> {
   _GenerateTargetCommand({
     required CliLogger logger,
     required String Function() workingDirectory,
+    FlutterCli? flutter,
   })  : _logger = logger,
-        _workingDirectory = workingDirectory {
+        _workingDirectory = workingDirectory,
+        _flutter = flutter ?? FlutterCli() {
     argParser.addFlag(
       'dry-run',
       help: 'List the files that would be created, without writing anything.',
@@ -53,6 +65,7 @@ abstract class _GenerateTargetCommand extends Command<int> {
 
   final CliLogger _logger;
   final String Function() _workingDirectory;
+  final FlutterCli _flutter;
 
   @override
   String get invocation => 'flutter_project_builder generate $name <name>';
@@ -103,6 +116,15 @@ abstract class _GenerateTargetCommand extends Command<int> {
       _logger.error('No pubspec.yaml found or not a Flutter project.');
       return 1;
     }
+    if (!ProjectGenerator.isGenerated(currentDir)) {
+      // The generated code imports lib/core, the router and flutter_riverpod.
+      _logger
+        ..error('No generated architecture found '
+            '(lib/${PackageConstants.generatedMarkerFile} is missing).')
+        ..info('Run `flutter_project_builder create` first: the generated '
+            'code depends on lib/core, lib/router and flutter_riverpod.');
+      return 1;
+    }
 
     final generator = FeatureGenerator(
       projectPath: currentDir,
@@ -130,6 +152,11 @@ abstract class _GenerateTargetCommand extends Command<int> {
       return 1;
     }
 
+    // So `clean` deletes these files too.
+    ProjectGenerator.recordGenerated(currentDir, report.created);
+    await _flutter.formatDart(currentDir, [
+      for (final path in report.created) p.join(currentDir, path),
+    ]);
     for (final path in report.created) {
       _logger.success('Created $path');
     }
@@ -156,6 +183,7 @@ class GenerateFeatureCommand extends _GenerateTargetCommand {
   GenerateFeatureCommand({
     required super.logger,
     String Function()? workingDirectory,
+    super.flutter,
   }) : super(
           workingDirectory: workingDirectory ?? (() => Directory.current.path),
         ) {
@@ -189,6 +217,7 @@ class GeneratePageCommand extends _GenerateTargetCommand {
   GeneratePageCommand({
     required super.logger,
     String Function()? workingDirectory,
+    super.flutter,
   }) : super(
           workingDirectory: workingDirectory ?? (() => Directory.current.path),
         ) {
@@ -220,6 +249,7 @@ class GenerateWidgetCommand extends _GenerateTargetCommand {
   GenerateWidgetCommand({
     required super.logger,
     String Function()? workingDirectory,
+    super.flutter,
   }) : super(
           workingDirectory: workingDirectory ?? (() => Directory.current.path),
         ) {
@@ -251,6 +281,7 @@ class GenerateProviderCommand extends _GenerateTargetCommand {
   GenerateProviderCommand({
     required super.logger,
     String Function()? workingDirectory,
+    super.flutter,
   }) : super(
           workingDirectory: workingDirectory ?? (() => Directory.current.path),
         ) {
@@ -293,6 +324,7 @@ class GenerateModelCommand extends _GenerateTargetCommand {
   GenerateModelCommand({
     required super.logger,
     String Function()? workingDirectory,
+    super.flutter,
   }) : super(
           workingDirectory: workingDirectory ?? (() => Directory.current.path),
         ) {

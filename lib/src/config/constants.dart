@@ -8,7 +8,7 @@ class PackageConstants {
   /// Current version of the package.
   ///
   /// Must be kept in sync with the `version` field in `pubspec.yaml`.
-  static const String version = '0.0.1';
+  static const String version = '0.1.0';
 
   /// Package name.
   static const String packageName = 'flutter_project_builder';
@@ -62,7 +62,7 @@ class PackageConstants {
     'flutter_localizations': 'sdk: flutter',
     'intl': 'any',
     'connectivity_plus': '^7.0.0',
-    'firebase_core': '^4.0.0',
+    'firebase_core': '^5.1.0',
   };
 
   /// Generated project dev dependencies.

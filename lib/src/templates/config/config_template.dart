@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs
 
+import '../../utils/l10n_settings.dart';
 import '../../utils/string_utils.dart';
 
 /// Template builders for the application entry points, environment
@@ -11,24 +12,37 @@ class ConfigTemplate {
   static const Set<String> productionFlavors = {'prod', 'production'};
 
   /// `lib/app.dart`: the root widget.
-  static String app({required bool localization}) {
-    final l10nImport =
-        localization ? "import 'l10n/app_localizations.dart';\n" : '';
-    final l10nConfig = localization
-        ? '''
-      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-'''
+  ///
+  /// With [localization], [l10n] describes the project's gen-l10n output (an
+  /// existing `l10n.yaml` may use another file or class name, or a nullable
+  /// getter). Without an `appTitle` message, the title is
+  /// `AppConfig.appName`.
+  static String app({
+    required bool localization,
+    L10nSettings l10n = const L10nSettings(),
+  }) {
+    final useL10n = localization && l10n.importPath != null;
+    final useAppTitle = useL10n && l10n.hasAppTitle;
+    final of = '${l10n.className}.of(context)${l10n.nullableGetter ? '!' : ''}';
+    final title = useAppTitle
+        ? '      onGenerateTitle: (context) => $of.appTitle,\n'
         : '      title: ref.watch(appConfigProvider).appName,\n';
-    final configImport =
-        localization ? '' : "import 'core/config/app_config.dart';\n";
+    final type = l10n.className;
+    final delegates = useL10n
+        ? '      localizationsDelegates: $type.localizationsDelegates,\n'
+            '      supportedLocales: $type.supportedLocales,\n'
+        : '';
+    final imports = [
+      if (!useAppTitle) "import 'core/config/app_config.dart';",
+      "import 'core/theme/app_theme.dart';",
+      if (useL10n) "import '${l10n.importPath}';",
+      "import 'router/app_router.dart';",
+    ]..sort();
     return '''
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-${configImport}import 'core/theme/app_theme.dart';
-${l10nImport}import 'router/app_router.dart';
+${imports.join('\n')}
 
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
@@ -38,7 +52,7 @@ class MyApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
-$l10nConfig      theme: AppTheme.lightTheme,
+$title$delegates      theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
       routerConfig: router,

@@ -40,6 +40,18 @@ class ModelField {
     'noSuchMethod',
   };
 
+  /// Names the generated code uses as types or functions inside the class
+  /// (`Map<String, dynamic>`, `as num`, `identical(...)`); a field with one
+  /// of these names would shadow them.
+  static const Set<String> _shadowingNames = {
+    'bool',
+    'double',
+    'dynamic',
+    'identical',
+    'int',
+    'num',
+  };
+
   /// Parses a comma-separated spec such as `id:int,title:String,price:double?`.
   ///
   /// Throws a [FormatException] for unknown types, invalid or duplicate
@@ -59,12 +71,20 @@ class ModelField {
       final nullable = type.endsWith('?');
       if (nullable) type = type.substring(0, type.length - 1);
 
-      if (!StringUtils.isValidIdentifier(name) ||
+      // Built-in identifiers (`type`, `get`, `on`, ...) are valid field
+      // names; only reserved words are not.
+      if (!StringUtils.isValidIdentifier(name, allowBuiltIn: true) ||
           name[0] != name[0].toLowerCase() ||
           _reservedMembers.contains(name)) {
         throw FormatException(
           'Invalid field name "$name". Use a lowerCamelCase identifier that '
-          'is not a Dart keyword or an Object member.',
+          'is not a Dart reserved word or an Object member.',
+        );
+      }
+      if (_shadowingNames.contains(name)) {
+        throw FormatException(
+          'Invalid field name "$name": it would hide the `$name` the '
+          'generated code uses. Choose another name (e.g. "${name}Value").',
         );
       }
       if (!supportedTypes.contains(type)) {

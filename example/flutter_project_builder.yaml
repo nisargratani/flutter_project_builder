@@ -1,35 +1,33 @@
 # flutter_project_builder configuration
-# This file configures the architecture generation.
+# Options that are commented out use the value of the template preset;
+# uncomment one to override it.
 
 # Used for the Android application ID and iOS/macOS bundle identifiers.
 organization: com.mycompany
 
-# Preset for options not listed here: basic, clean, enterprise
+# Preset for the options not set here: basic, clean, enterprise
 template: enterprise
 
 # Flavor names; each produces lib/main_<flavor>.dart
-flavors:
-  - dev
-  - stage
-  - prod
+# flavors: [dev, stage, prod]
 
 # Configure Android product flavors and Xcode schemes for the flavors
-native_flavors: true
+# native_flavors: true
 
 # State management
-riverpod: true
+# riverpod: true
 
 # Firebase (firebase_core); run `flutterfire configure` afterwards
-firebase: false
+# firebase: false
 
 # Local storage
-hive: true
+# hive: true
 
 # Networking
-dio: true
+# dio: true
 
 # Localization
-localization: true
+# localization: true
 
 # Sample features
-sample_features: true
+# sample_features: true

@@ -103,77 +103,84 @@ class StringUtils {
     return '${input}s';
   }
 
-  /// Dart reserved words and built-in identifiers that cannot be used as
-  /// enum values, library path segments or type names.
+  /// Dart reserved words, plus `await` and `yield` (reserved inside async
+  /// and generator functions). They can never be used as identifiers.
   static const Set<String> reservedWords = {
-    'abstract',
-    'as',
     'assert',
-    'async',
     'await',
-    'base',
     'break',
     'case',
     'catch',
     'class',
     'const',
     'continue',
-    'covariant',
     'default',
-    'deferred',
     'do',
-    'dynamic',
     'else',
     'enum',
-    'export',
     'extends',
-    'extension',
-    'external',
-    'factory',
     'false',
     'final',
     'finally',
     'for',
+    'if',
+    'in',
+    'is',
+    'new',
+    'null',
+    'rethrow',
+    'return',
+    'super',
+    'switch',
+    'this',
+    'throw',
+    'true',
+    'try',
+    'var',
+    'void',
+    'while',
+    'with',
+    'yield',
+  };
+
+  /// Built-in identifiers and contextual keywords (plus `function` and
+  /// `type`). They are valid names for fields and variables (a `type` or
+  /// `get` field), but not for types, import prefixes or library paths, so
+  /// flavor and `generate` names avoid them.
+  static const Set<String> builtInIdentifiers = {
+    'abstract',
+    'as',
+    'async',
+    'base',
+    'covariant',
+    'deferred',
+    'dynamic',
+    'export',
+    'extension',
+    'external',
+    'factory',
     'function',
     'get',
     'hide',
-    'if',
     'implements',
     'import',
-    'in',
     'interface',
-    'is',
     'late',
     'library',
     'mixin',
-    'new',
-    'null',
     'of',
     'on',
     'operator',
     'part',
     'required',
-    'rethrow',
-    'return',
     'sealed',
     'set',
     'show',
     'static',
-    'super',
-    'switch',
     'sync',
-    'this',
-    'throw',
-    'true',
-    'try',
     'type',
     'typedef',
-    'var',
-    'void',
     'when',
-    'while',
-    'with',
-    'yield',
   };
 
   static final RegExp _identifierPattern = RegExp(r'^[a-zA-Z][a-zA-Z0-9_]*$');
@@ -181,8 +188,13 @@ class StringUtils {
   /// Whether [input] is a valid Dart identifier that is not a reserved word.
   ///
   /// Identifiers starting with `_` are rejected because they would be
-  /// library-private in generated code.
-  static bool isValidIdentifier(String input) =>
-      _identifierPattern.hasMatch(input) &&
-      !reservedWords.contains(input.toLowerCase());
+  /// library-private in generated code. [builtInIdentifiers] such as `type`
+  /// or `get` are rejected too, unless [allowBuiltIn] is `true` (they are
+  /// fine as field names).
+  static bool isValidIdentifier(String input, {bool allowBuiltIn = false}) {
+    if (!_identifierPattern.hasMatch(input)) return false;
+    final lower = input.toLowerCase();
+    return !reservedWords.contains(lower) &&
+        (allowBuiltIn || !builtInIdentifiers.contains(lower));
+  }
 }

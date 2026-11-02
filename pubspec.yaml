@@ -3,7 +3,7 @@ description: >-
   CLI that scaffolds Clean Architecture into a Flutter app, configures native
   flavors and app IDs, and generates features, pages, widgets, providers and
   models.
-version: 0.0.1
+version: 0.1.0
 homepage: https://github.com/nisargratani/flutter_project_builder
 repository: https://github.com/nisargratani/flutter_project_builder
 issue_tracker: https://github.com/nisargratani/flutter_project_builder/issues
@@ -20,6 +20,7 @@ environment:
 dependencies:
   args: ^2.5.0
   path: ^1.9.0
+  pub_semver: ^2.1.4
   yaml: ^3.1.2
   yaml_edit: ^2.2.1
 

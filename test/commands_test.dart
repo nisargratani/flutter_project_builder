@@ -192,6 +192,8 @@ void main() {
 
     test('--no-route and missing router produce files and a warning', () async {
       final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
+      Directory(p.join(project.path, 'lib/router')).deleteSync(recursive: true);
       expect(
         await runCli(project, ['generate', 'feature', 'auth', '--no-route']),
         0,
@@ -209,6 +211,7 @@ void main() {
 
     test('is idempotent and keeps existing files', () async {
       final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
       await runCli(project, ['generate', 'feature', 'auth']);
       final page = File(
         p.join(project.path, 'lib/features/auth/presentation/pages/a.dart'),
@@ -219,6 +222,8 @@ void main() {
 
     test('rejects invalid names, reserved words and path traversal', () async {
       final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
+      final before = snapshot(project);
       for (final name in ['../../escape', 'class', '1st', '_x', 'a/b']) {
         expect(
           await runCli(project, ['generate', 'feature', name]),
@@ -228,7 +233,7 @@ void main() {
       }
       expect(await runCli(project, ['generate', 'feature']), 1);
       expect(await runCli(project, ['generate', 'feature', 'a', 'b']), 1);
-      expect(exists(project, 'lib'), isFalse);
+      expect(snapshot(project), before);
       expect(exists(project, 'escape'), isFalse);
       expect(exists(project, '../escape'), isFalse);
     });
@@ -281,6 +286,8 @@ void main() {
 
     test('rejects clashing names and bad field specs', () async {
       final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
+      final before = snapshot(project);
       expect(await runCli(project, ['generate', 'widget', 'app']), 1);
       expect(await runCli(project, ['generate', 'page', 'home']), 1);
       expect(
@@ -291,17 +298,18 @@ void main() {
         await runCli(project, ['generate', 'provider', 'p', '--type=x']),
         1,
       );
-      expect(exists(project, 'lib'), isFalse);
+      expect(snapshot(project), before);
     });
 
     test('--dry-run writes nothing', () async {
       final project = createProject();
+      await runCli(project, ['create', '--no-sample']);
+      final before = snapshot(project);
       expect(
         await runCli(project, ['generate', 'feature', 'auth', '--dry-run']),
         0,
       );
-      expect(exists(project, 'lib'), isFalse);
-      expect(exists(project, 'test'), isFalse);
+      expect(snapshot(project), before);
     });
   });
 

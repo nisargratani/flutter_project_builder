@@ -43,6 +43,7 @@ class FileUtils {
   FileUtils._();
 
   static const Symbol _recorderKey = #flutterProjectBuilderDryRun;
+  static const Symbol _writeLogKey = #flutterProjectBuilderWriteLog;
 
   static DryRunRecorder? get _recorder =>
       Zone.current[_recorderKey] as DryRunRecorder?;
@@ -60,11 +61,21 @@ class FileUtils {
     return recorder;
   }
 
+  /// Runs [body] and returns the normalized absolute paths of the files it
+  /// wrote with [createFile] (inside [dryRun]: would write).
+  static Future<Set<String>> trackWrites(Future<void> Function() body) async {
+    final log = <String>{};
+    await runZoned(body, zoneValues: {_writeLogKey: log});
+    return log;
+  }
+
   /// Creates a file at [filePath] with the given [content].
   ///
   /// Creates parent directories if they do not exist.
   /// Will overwrite existing files.
   static void createFile(String filePath, String content) {
+    (Zone.current[_writeLogKey] as Set<String>?)
+        ?.add(p.normalize(p.absolute(filePath)));
     final recorder = _recorder;
     if (recorder != null) {
       recorder._writes[p.normalize(p.absolute(filePath))] = content;

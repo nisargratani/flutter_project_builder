@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import '../config/project_config.dart';
 import '../templates/config/config_template.dart';
 import '../utils/file_utils.dart';
+import '../utils/l10n_settings.dart';
 import '../utils/pubspec_utils.dart';
 import '../utils/string_utils.dart';
 
@@ -33,7 +34,13 @@ class ConfigGenerator {
   Future<void> generate() async {
     FileUtils.createFile(
       p.join(_libPath, 'app.dart'),
-      ConfigTemplate.app(localization: config.localization),
+      ConfigTemplate.app(
+        localization: config.localization,
+        // An existing l10n.yaml is kept, so follow it.
+        l10n: config.localization
+            ? L10nSettings.read(projectPath)
+            : const L10nSettings(),
+      ),
     );
     FileUtils.createFile(
       p.join(_libPath, 'bootstrap.dart'),
