@@ -201,7 +201,8 @@ void main() {
   });
 
   group('raiseDeploymentTargets', () {
-    test('raises lower targets and uncomments the Podfile platform', () {
+    test('raises lower project targets but leaves a commented Podfile line',
+        () {
       final pbxprojFile =
           File(p.join(project.path, 'ios/Runner.xcodeproj/project.pbxproj'));
       pbxprojFile.writeAsStringSync(
@@ -210,6 +211,7 @@ void main() {
               'IPHONEOS_DEPLOYMENT_TARGET = 13.0;',
             ),
       );
+      final podfileBefore = readFile(project, 'ios/Podfile');
 
       final result = native.raiseDeploymentTargets(ios: '15.0', macos: '10.15');
 
@@ -217,15 +219,36 @@ void main() {
         pbxprojFile.readAsStringSync(),
         isNot(contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0;')),
       );
-      expect(
-        readFile(project, 'ios/Podfile'),
-        contains("\nplatform :ios, '15.0'"),
+      // CocoaPods infers the platform from the project when it is commented.
+      expect(readFile(project, 'ios/Podfile'), podfileBefore);
+      expect(result.changed, ['ios/Runner.xcodeproj/project.pbxproj']);
+    });
+
+    test('raises an explicit lower Podfile platform', () {
+      final podfile = File(p.join(project.path, 'ios/Podfile'));
+      podfile.writeAsStringSync(
+        podfile
+            .readAsStringSync()
+            .replaceFirst("# platform :ios, '15.0'", "platform :ios, '13.0'"),
       );
-      expect(result.changed, contains('ios/Runner.xcodeproj/project.pbxproj'));
+      native.raiseDeploymentTargets(ios: '15.0');
+      expect(podfile.readAsStringSync(), contains("\nplatform :ios, '15.0'"));
+    });
+
+    test('never creates a Podfile', () {
+      for (final platform in ['ios', 'macos']) {
+        File(p.join(project.path, platform, 'Podfile')).deleteSync();
+      }
+      final first = native.raiseDeploymentTargets(ios: '15.0', macos: '10.15');
+      final second = native.configureFlavors(['dev', 'prod']);
+
+      expect(exists(project, 'ios/Podfile'), isFalse);
+      expect(exists(project, 'macos/Podfile'), isFalse);
+      expect([...first.warnings, ...second.warnings], isEmpty);
       expect(
-        result.changed,
-        isNot(contains('macos/Runner.xcodeproj/project.pbxproj')),
-        reason: 'macOS is already at 10.15',
+        readFile(project, 'ios/Runner.xcodeproj/project.pbxproj'),
+        contains('name = Debug-dev;'),
+        reason: 'Xcode flavors are still configured',
       );
     });
 
@@ -236,10 +259,6 @@ void main() {
       expect(
         readFile(project, 'ios/Runner.xcodeproj/project.pbxproj'),
         before,
-      );
-      expect(
-        readFile(project, 'ios/Podfile'),
-        contains("platform :ios, '15.0'"),
       );
     });
   });

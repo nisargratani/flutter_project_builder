@@ -113,6 +113,19 @@ void main() {
     expect(flutter.calls.single, ['pub', 'get']);
   });
 
+  test('native flavors: pub get runs, then the native setup is reapplied',
+      () async {
+    final existing = project('flavored')..createSync();
+    File(p.join(existing.path, 'pubspec.yaml'))
+        .writeAsStringSync(flutterPubspec);
+
+    expect(await run(['create', 'flavored', '--template=enterprise']), 0);
+    expect(flutter.calls, [
+      ['pub', 'get'],
+    ]);
+    expect(readFile(existing, 'pubspec.yaml'), contains('default-flavor: dev'));
+  });
+
   test('rejects invalid names and non-Flutter directories', () async {
     expect(await run(['create', 'My-App']), 1);
     expect(await run(['create', 'class']), 1);

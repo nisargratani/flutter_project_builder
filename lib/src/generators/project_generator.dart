@@ -152,10 +152,8 @@ class ProjectGenerator {
       },
       'Generating main files and config...':
           ConfigGenerator(projectPath: projectPath, config: config).generate,
-      if (config.hasCustomOrganization ||
-          config.hasNativeFlavors ||
-          config.firebase)
-        'Configuring native projects...': _configureNative,
+      if (needsNativeConfiguration)
+        'Configuring native projects...': configureNative,
       'Generating Test templates...':
           TestGenerator(projectPath: projectPath, config: config).generate,
       'Generating documentation...':
@@ -163,7 +161,19 @@ class ProjectGenerator {
     };
   }
 
-  Future<void> _configureNative() async {
+  /// Whether [configureNative] has anything to do for [config].
+  bool get needsNativeConfiguration =>
+      config.hasCustomOrganization ||
+      config.hasNativeFlavors ||
+      config.firebase;
+
+  /// Applies the organization, native flavors, deployment targets and
+  /// `default-flavor` to the platform folders.
+  ///
+  /// Idempotent. Run it again after `flutter pub get`: Flutter only creates
+  /// a Podfile at that point (when the project uses CocoaPods), and the
+  /// flavor configurations must then be mapped in it.
+  Future<void> configureNative() async {
     final native = NativeProject(
       projectPath: projectPath,
       packageName:

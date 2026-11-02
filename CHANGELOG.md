@@ -29,7 +29,9 @@ Initial release.
   configuration (`--native-flavors`, on by default). This covers Android
   product flavors with per-flavor application ID suffix and app name;
   iOS/macOS build configurations, schemes, bundle IDs and display names;
-  and CocoaPods configuration mappings. `default-flavor` is set in the
+  and, for projects that use CocoaPods, flavor mappings in the Podfile
+  Flutter creates. No Podfile is created, so Swift Package Manager projects
+  build as-is. `default-flavor` is set in the
   pubspec, and `lib/main.dart` follows `appFlavor`.
 - Per-environment `AppConfig` (base URL, app name, network logging), exposed
   through `appConfigProvider` and used by the Dio client.
@@ -59,7 +61,8 @@ Initial release.
 
 ### Other commands
 
-- `upgrade` regenerates `lib/core` while keeping your `AppConfig` values
+- `upgrade` regenerates `lib/core` while keeping your `AppConfig` values,
+  and adds missing native flavor configurations and Podfile mappings
   (`--force`, `--dry-run`).
 - `init` writes a default configuration file.
 - `clean` removes generated code and keeps your own files.

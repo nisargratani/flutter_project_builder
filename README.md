@@ -83,7 +83,7 @@ tests.
 | --- | --- | --- |
 | `--project-name` | directory name | Package name for a new project; required when the directory name isn't a valid one, e.g. `my-app`. |
 | `--platforms` | all | Platforms for a new project, e.g. `--platforms=android,ios`. |
-| `--[no-]pub` | on for new projects | Run `flutter pub get` at the end. |
+| `--[no-]pub` | on for new projects and native flavors | Run `flutter pub get` at the end. |
 | `--template`, `-t` | `clean` | Preset, see above. |
 | `--org`, `-o` | `com.example` | Sets the Android `applicationId`, the iOS/macOS bundle IDs and the Linux application ID to `<org>.<package>` (Windows: company name). The default leaves IDs unchanged. |
 | `--[no-]flavors`, `-f` | off | `dev`, `stage`, `prod` flavors (use the config file for other names). |
@@ -164,9 +164,14 @@ flutter run --flavor dev --dart-define=BASE_URL=http://localhost:8080/
   reads them through `appConfigProvider` (override it in tests).
 - Native setup: Android `productFlavors` in `android/app/build.gradle(.kts)`,
   iOS/macOS `Debug-<flavor>`/`Profile-<flavor>`/`Release-<flavor>` build
-  configurations and a `<flavor>` scheme, plus matching CocoaPods mappings in
-  `ios/Podfile` and `macos/Podfile`. Flavors named `prod`/`production` keep
-  the base IDs.
+  configurations and a `<flavor>` scheme. Flavors named `prod`/`production`
+  keep the base IDs.
+- iOS/macOS dependencies: with Swift Package Manager (Flutter's default) no
+  Podfile is needed. If the project uses CocoaPods, `create` runs
+  `flutter pub get` so Flutter creates the Podfile, then maps the flavor
+  configurations in it. If Flutter creates a Podfile later (for example
+  after adding a CocoaPods-only plugin), run `flutter_project_builder upgrade`
+  to add the mappings.
 - Without flavors you still get `AppConfig` with a single base URL.
 - Use `--no-native-flavors` for Dart-only flavors.
 
@@ -176,9 +181,9 @@ flutter run --flavor dev --dart-define=BASE_URL=http://localhost:8080/
 and a placeholder `lib/firebase_options.dart`, and calls
 `FirebaseInitializer.initialize()` in `bootstrap.dart`. Because
 `firebase_core` requires iOS 15 and macOS 10.15, lower deployment targets are
-raised in the Xcode project, Podfile and `AppFrameworkInfo.plist` (projects
-created by older Flutter versions, such as 3.41 and 3.44, target iOS 13). Then connect your
-project:
+raised in the Xcode project and `AppFrameworkInfo.plist` (projects created
+by older Flutter versions, such as 3.41 and 3.44, target iOS 13). Then
+connect your project:
 
 ```bash
 dart pub global activate flutterfire_cli
@@ -194,7 +199,7 @@ configured automatically.
 
 | Command | Description |
 | --- | --- |
-| `upgrade` | Regenerates `lib/core/` with the current templates using your saved options. Features, routes, entry points, native files, tests and your `AppConfig` values are kept. `--force` skips the prompt (required in CI), `--dry-run` previews. |
+| `upgrade` | Regenerates `lib/core/` with the current templates using your saved options. Features, routes, entry points, tests and your `AppConfig` values are kept. With native flavors, missing flavor configurations and Podfile mappings are added. `--force` skips the prompt (required in CI), `--dry-run` previews. |
 | `init` | Writes a default `flutter_project_builder.yaml`. |
 | `clean` | Deletes generated code (`lib/core`, `lib/features`, `lib/router`, entry points, generated tests). Keeps `lib/main.dart`, your tests, translations, `firebase_options.dart` and native changes. Asks first; `--force` in CI. |
 | `doctor` | Checks `flutter`, `dart` and `git`; exits 1 if Flutter or Dart is missing. |
@@ -246,17 +251,17 @@ test/
 
 ## Verified platforms
 
-Tested on a macOS host with the `enterprise` template and `--org=io.acme`:
+Checked with the `enterprise` template and `--org`, locally (macOS host) and
+in CI on GitHub-hosted runners:
 
-| Platform | Flutter 3.47 | Flutter 3.41 / 3.44 |
-| --- | --- | --- |
-| Generated code (`analyze`, `test`) | ✅ | ✅ |
-| Android (`--flavor dev/prod`) | ✅ built; IDs and labels checked | ✅ built (3.44) |
-| iOS simulator (`--flavor dev`) | ✅ built and run | ⚠️ not buildable with Xcode 27 (affects any plugin app on these versions) |
-| macOS (`--flavor stage`) | ✅ built and run | – |
-| Web | ✅ built | – |
-| Linux, Windows | CI job (not run locally) | – |
-| Flutter 3.32 (minimum) | CI job (not run locally) | – |
+| Check | Result |
+| --- | --- |
+| Generated code (`analyze`, `test`) on Flutter 3.32 and latest stable | ✅ CI, all templates |
+| Android (`--flavor dev/prod`) | ✅ built; IDs and labels checked |
+| iOS simulator (`--flavor dev`) | ✅ built and run, with Swift Package Manager and with CocoaPods |
+| macOS (`--flavor dev`) | ✅ built and run, with Swift Package Manager and with CocoaPods |
+| Linux, Windows, web | ✅ built in CI |
+| Flutter 3.41 / 3.44 | ✅ analyze, test and Android flavor build (iOS not buildable with Xcode 27 on those versions, for any plugin app) |
 
 ## Limitations
 

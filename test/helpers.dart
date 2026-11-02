@@ -44,10 +44,15 @@ Directory createProject({
 }
 
 /// Runs the CLI in [project] and returns the exit code.
+/// `flutter` calls (e.g. `pub get`) succeed without doing anything.
 Future<int> runCli(Directory project, List<String> args) =>
     FlutterProjectBuilderCommandRunner(
       logger: CliLogger(useColors: false),
       workingDirectory: project.path,
+      flutter: FlutterCli(
+        runner: (executable, arguments, {workingDirectory}) async =>
+            ProcessResult(0, 0, '', ''),
+      ),
     ).run(args);
 
 /// Reads a project file relative to [project].

@@ -144,7 +144,9 @@ class NativeProject {
   ///   the flavor's app name.
   /// - iOS/macOS: `Debug-<flavor>`, `Profile-<flavor>`, `Release-<flavor>`
   ///   build configurations, a `<flavor>` scheme, per-flavor bundle IDs,
-  ///   (iOS) per-flavor display names, and matching CocoaPods mappings.
+  ///   (iOS) per-flavor display names, and matching CocoaPods mappings in
+  ///   an existing Podfile (run this again after `flutter pub get` creates
+  ///   one; it is idempotent).
   ///
   /// Production flavors ([productionFlavors]) keep the base IDs and name.
   NativeEditResult configureFlavors(List<String> flavors) {
@@ -497,12 +499,7 @@ class NativeProject {
     NativeEditResult result,
   ) {
     final relative = '$platform/Podfile';
-    final podfile = _readPodfile(
-      platform,
-      result,
-      'the ${platform == 'ios' ? 'iOS' : 'macOS'} flavor configurations to '
-      "`project 'Runner'`",
-    );
+    final podfile = _readPodfile(platform);
     if (podfile == null) return;
 
     final block = RegExp(r"project 'Runner', \{\n(.*?)\}", dotAll: true)
@@ -530,31 +527,20 @@ class NativeProject {
     _write(result, relative, updated);
   }
 
-  /// Returns the Podfile of [platform], or Flutter's template when the
-  /// project has none yet (Flutter only creates it on the first build).
-  String? _readPodfile(
-    String platform,
-    NativeEditResult result,
-    String manualStep,
-  ) {
-    final relative = '$platform/Podfile';
-    final podfile = FileUtils.readFile(_path(relative)) ??
-        _flutterPodfileTemplate(platform);
-    if (podfile == null) {
-      result.warnings.add(
-        'Could not locate the Flutter SDK to create $relative. After the '
-        'first `pod install`, add $manualStep in $relative.',
-      );
-    }
-    return podfile;
-  }
+  /// Returns the existing Podfile of [platform], or `null`.
+  ///
+  /// A Podfile is never created here: Flutter creates one itself (during
+  /// `flutter pub get`) only when the project uses CocoaPods. With Swift
+  /// Package Manager, an extra Podfile would break the build.
+  String? _readPodfile(String platform) =>
+      FileUtils.readFile(_path('$platform/Podfile'));
 
   // ── Deployment targets ─────────────────────────────────────────────
 
   /// Raises the minimum iOS/macOS versions to at least [ios] / [macos]
   /// (for example because a plugin such as `firebase_core` requires them).
   ///
-  /// Updates the Xcode project, the Podfile `platform` line and
+  /// Updates the Xcode project, an explicit Podfile `platform` line and
   /// `AppFrameworkInfo.plist`. Targets that are already higher are kept.
   NativeEditResult raiseDeploymentTargets({String? ios, String? macos}) {
     final result = NativeEditResult();
@@ -573,28 +559,21 @@ class NativeProject {
       );
       if (updated != content) _write(result, pbxproj, updated);
 
-      final podfile = _readPodfile(
-        platform,
-        result,
-        "`platform :$podPlatform, '$minimum'`",
-      );
-      if (podfile != null) {
-        final line = RegExp(
-          "^#? *platform :$podPlatform, '([0-9.]+)'",
-          multiLine: true,
-        ).firstMatch(podfile);
-        final desired = "platform :$podPlatform, '$minimum'";
-        String? newPodfile;
-        if (line == null) {
-          newPodfile = '$desired\n$podfile';
-        } else if (line[0]!.startsWith('#') || _isLower(line[1]!, minimum)) {
-          newPodfile = podfile.replaceFirst(line[0]!, desired);
-        } else if (!FileUtils.fileExists(_path('$platform/Podfile'))) {
-          newPodfile = podfile;
-        }
-        if (newPodfile != null) {
-          _write(result, '$platform/Podfile', newPodfile);
-        }
+      // CocoaPods infers the platform from the Xcode project when the
+      // Podfile does not set one, so only an explicit lower value is raised.
+      final podfile = _readPodfile(platform);
+      final line = podfile == null
+          ? null
+          : RegExp(
+              "^platform :$podPlatform, '([0-9.]+)'",
+              multiLine: true,
+            ).firstMatch(podfile);
+      if (line != null && _isLower(line[1]!, minimum)) {
+        _write(
+          result,
+          '$platform/Podfile',
+          podfile!.replaceFirst(line[0]!, "platform :$podPlatform, '$minimum'"),
+        );
       }
 
       if (platform == 'ios') {
@@ -627,22 +606,6 @@ class NativeProject {
       if (x != y) return x < y;
     }
     return false;
-  }
-
-  static String? _flutterPodfileTemplate(String platform) {
-    final root = flutterRoot();
-    if (root == null) return null;
-    final template = File(
-      p.join(
-        root,
-        'packages',
-        'flutter_tools',
-        'templates',
-        'cocoapods',
-        'Podfile-$platform',
-      ),
-    );
-    return template.existsSync() ? template.readAsStringSync() : null;
   }
 
   /// Locates the Flutter SDK from `FLUTTER_ROOT` or the `flutter`

@@ -130,7 +130,8 @@ class CreateCommand extends Command<int> {
       ..addFlag(
         'pub',
         help: 'Run `flutter pub get` afterwards. Defaults to on when a new '
-            'project is created, off otherwise.',
+            'project is created or native flavors are configured (so the '
+            'flavors can be mapped in a CocoaPods Podfile), off otherwise.',
       );
   }
 
@@ -318,9 +319,22 @@ class CreateCommand extends Command<int> {
     }
     _printWarnings(generator.warnings);
 
-    final runPubGet =
-        results.wasParsed('pub') ? results.flag('pub') : needsFlutterCreate;
+    final runPubGet = results.wasParsed('pub')
+        ? results.flag('pub')
+        : needsFlutterCreate || config.hasNativeFlavors;
     final pubGetDone = runPubGet && await _runPubGet(currentDir);
+    if (pubGetDone && generator.needsNativeConfiguration) {
+      // `pub get` lets Flutter choose CocoaPods or Swift Package Manager and
+      // create a Podfile only if needed; map the flavors in it now.
+      final before = generator.warnings.length;
+      await generator.configureNative();
+      _printWarnings(generator.warnings.sublist(before));
+    } else if (!pubGetDone && config.hasNativeFlavors) {
+      _logger.info(
+        'After `flutter pub get`, run `flutter_project_builder upgrade` so '
+        'the flavors are also mapped in any Podfile Flutter creates.',
+      );
+    }
 
     final firstFlavor = config.hasFlavors ? config.flavors.first : null;
     _logger.nextSteps([

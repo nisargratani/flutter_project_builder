@@ -119,6 +119,14 @@ jobs:
           - platform: macos
             os: macos-latest
             build: flutter build macos --debug --flavor dev
+          - platform: ios (CocoaPods)
+            os: macos-latest
+            cocoapods: true
+            build: flutter build ios --simulator --debug --flavor dev
+          - platform: macos (CocoaPods)
+            os: macos-latest
+            cocoapods: true
+            build: flutter build macos --debug --flavor dev
           - platform: linux
             os: ubuntu-latest
             build: flutter build linux --debug
@@ -144,6 +152,10 @@ jobs:
         with:
           channel: stable
 
+      - name: Use CocoaPods instead of Swift Package Manager
+        if: matrix.cocoapods
+        run: flutter config --no-enable-swift-package-manager
+
       - name: Install Linux build dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -165,7 +177,7 @@ jobs:
           cd "$RUNNER_TEMP/my_app"
           echo "::notice::$(flutter --version | head -1)"
           if [ "$RUNNER_OS" = "macOS" ]; then
-            echo "::notice::$(xcodebuild -version | tr '\n' ' ') / CocoaPods $(pod --version)"
+            echo "::notice::$(xcodebuild -version | tr '\n' ' ') / CocoaPods $(pod --version) / Podfiles: $(ls ios/Podfile macos/Podfile 2>/dev/null | tr '\n' ' ')"
           fi
           set -o pipefail
           if ! ${{ matrix.build }} 2>&1 | tee "$RUNNER_TEMP/build.log"; then

@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
 
 import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
 import '../../utils/file_utils.dart';
+import '../../utils/native_project.dart';
 import '../../utils/pubspec_utils.dart';
 import '../cli_logger.dart';
 import '../dry_run_report.dart';
@@ -13,7 +15,8 @@ import '../dry_run_report.dart';
 ///
 /// Regenerates `lib/core/` (and adds missing dependencies) using the options
 /// in `flutter_project_builder.yaml`. Features, routing, entry points and
-/// tests are not touched.
+/// tests are not touched. With native flavors, missing flavor
+/// configurations and Podfile mappings are added (existing ones are kept).
 class UpgradeCommand extends Command<int> {
   /// Creates a new [UpgradeCommand].
   UpgradeCommand({
@@ -100,6 +103,20 @@ class UpgradeCommand extends Command<int> {
         config: config,
         logger: _logger,
       ).generate(upgradeMode: true);
+
+      if (config.hasNativeFlavors) {
+        // Adds flavors that are new in the config, and maps flavors in a
+        // Podfile that Flutter created after `create` ran. Idempotent.
+        final native = NativeProject(
+          projectPath: currentDir,
+          packageName:
+              PubspecUtils.getProjectName(currentDir) ?? p.basename(currentDir),
+        );
+        for (final warning
+            in native.configureFlavors(config.flavors).warnings) {
+          _logger.warning(warning);
+        }
+      }
 
       _logger.success('Architecture upgraded successfully.');
       return 0;
