@@ -12,17 +12,30 @@ dart pub global activate flutter_project_builder
 The pub cache `bin` directory must be on your `PATH` (`~/.pub-cache/bin` on
 macOS/Linux, `%LOCALAPPDATA%\Pub\Cache\bin` on Windows).
 
-## 2. Generate the architecture
+## 2. Create an app
 
-The CLI works **inside an existing** Flutter project (Flutter 3.32+):
+One command runs `flutter create`, generates the architecture and installs
+dependencies (Flutter 3.32+ must be on your `PATH`):
 
 ```bash
-flutter create my_app
+flutter_project_builder create my_app --template=enterprise --org=com.mycompany
 cd my_app
-flutter_project_builder create --dry-run --template=enterprise --org=com.mycompany  # preview
+flutter test
+flutter run --flavor dev
+```
+
+Useful options for new projects: `--project-name shop` (when the folder name
+is not a valid package name), `--platforms=android,ios`, `--no-pub`. Add
+`--dry-run` to see the `flutter create` command that would run.
+
+For an **existing** Flutter project, run `create` inside it without a
+directory (preview first; it replaces `lib/main.dart`):
+
+```bash
+cd existing_app
+flutter_project_builder create --dry-run --template=enterprise --org=com.mycompany
 flutter_project_builder create --template=enterprise --org=com.mycompany
 flutter pub get
-flutter test
 ```
 
 Pick a template:

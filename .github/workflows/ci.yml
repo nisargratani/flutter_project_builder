@@ -153,17 +153,16 @@ jobs:
       - name: Activate CLI from source
         run: dart pub global activate --source path .
 
-      - name: Create app and generate architecture
+      - name: Create app and generate architecture (one command)
         run: |
-          flutter create --no-pub --project-name my_app "$RUNNER_TEMP/app"
-          cd "$RUNNER_TEMP/app"
-          dart pub global run flutter_project_builder create --no-interactive --template=enterprise --org=io.acme
+          cd "$RUNNER_TEMP"
+          dart pub global run flutter_project_builder create my_app --no-interactive --template=enterprise --org=io.acme
+          cd my_app
           dart pub global run flutter_project_builder generate feature product
-          flutter pub get
 
       - name: Build
         run: |
-          cd "$RUNNER_TEMP/app"
+          cd "$RUNNER_TEMP/my_app"
           ${{ matrix.build }}
 
   pana:

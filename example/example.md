@@ -7,14 +7,12 @@ session. Each step is run in CI against a fresh `flutter create` project.
 # 1. Install the CLI
 dart pub global activate flutter_project_builder
 
-# 2. Create an app and generate an enterprise setup
-flutter create my_app
+# 2. Create the app: runs `flutter create`, generates the architecture and
+#    installs dependencies
+flutter_project_builder create my_app --template=enterprise --org=com.mycompany
 cd my_app
-flutter_project_builder create --template=enterprise --org=com.mycompany --dry-run
-flutter_project_builder create --template=enterprise --org=com.mycompany
 
-# 3. Install dependencies and verify the generated code
-flutter pub get
+# 3. Verify the generated code
 flutter analyze
 flutter test
 
@@ -32,7 +30,9 @@ flutter_project_builder generate model address --fields "street:String,zip:int?"
 ## Variations
 
 ```bash
-flutter_project_builder create                          # interactive wizard
+flutter_project_builder create my_app                   # interactive wizard
+flutter_project_builder create shop-app --project-name shop --platforms=android,ios
+cd existing_app && flutter_project_builder create       # inside an existing project
 flutter_project_builder create --template=basic         # minimal setup
 flutter_project_builder create --flavors --no-native-flavors  # Dart-only flavors
 flutter_project_builder create --firebase               # then: flutterfire configure

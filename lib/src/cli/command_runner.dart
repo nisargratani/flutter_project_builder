@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 
 import '../config/constants.dart';
+import '../utils/flutter_cli.dart';
 import 'cli_logger.dart';
 import 'commands/clean_command.dart';
 import 'commands/create_command.dart';
@@ -24,10 +25,12 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
   /// Creates a new [FlutterProjectBuilderCommandRunner].
   ///
   /// Commands operate on [workingDirectory], which defaults to the current
-  /// directory of the process.
+  /// directory of the process. [flutter] runs the `flutter` tool (used by
+  /// `create <directory>`); replace it in tests.
   FlutterProjectBuilderCommandRunner({
     CliLogger? logger,
     String? workingDirectory,
+    FlutterCli? flutter,
   })  : _logger = logger ?? CliLogger(),
         super(
           PackageConstants.packageName,
@@ -48,7 +51,9 @@ class FlutterProjectBuilderCommandRunner extends CommandRunner<int> {
 
     String cwd() => workingDirectory ?? Directory.current.path;
 
-    addCommand(CreateCommand(logger: _logger, workingDirectory: cwd));
+    addCommand(
+      CreateCommand(logger: _logger, workingDirectory: cwd, flutter: flutter),
+    );
     addCommand(DoctorCommand(logger: _logger, workingDirectory: cwd));
     addCommand(CleanCommand(logger: _logger, workingDirectory: cwd));
     addCommand(UpgradeCommand(logger: _logger, workingDirectory: cwd));

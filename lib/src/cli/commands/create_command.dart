@@ -1,16 +1,23 @@
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
 
 import '../../config/constants.dart';
 import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
 import '../../utils/file_utils.dart';
+import '../../utils/flutter_cli.dart';
 import '../../utils/pubspec_utils.dart';
+import '../../utils/string_utils.dart';
 import '../cli_logger.dart';
 import '../dry_run_report.dart';
 
 /// Command to create a new Flutter project architecture.
+///
+/// `create` works in the current Flutter project, or with a directory
+/// argument (`create my_app`) it first runs `flutter create` when that
+/// directory does not exist yet (or is empty), then generates inside it.
 ///
 /// Configuration is resolved in this order (highest priority first):
 /// 1. options passed on the command line,
@@ -23,8 +30,10 @@ class CreateCommand extends Command<int> {
   CreateCommand({
     required CliLogger logger,
     String Function()? workingDirectory,
+    FlutterCli? flutter,
   })  : _logger = logger,
-        _workingDirectory = workingDirectory ?? (() => Directory.current.path) {
+        _workingDirectory = workingDirectory ?? (() => Directory.current.path),
+        _flutter = flutter ?? FlutterCli() {
     argParser
       ..addFlag(
         'interactive',
@@ -105,8 +114,28 @@ class CreateCommand extends Command<int> {
         help: 'Regenerate even if the architecture was already generated. '
             'Overwrites generated files.',
         negatable: false,
+      )
+      ..addOption(
+        'project-name',
+        help: 'Package name for a new project (defaults to the directory '
+            'name). Only used when `create <directory>` creates the project.',
+        valueHelp: 'name',
+      )
+      ..addMultiOption(
+        'platforms',
+        help: 'Platforms for a new project (defaults to all). Only used when '
+            '`create <directory>` creates the project.',
+        allowed: FlutterCli.platforms,
+      )
+      ..addFlag(
+        'pub',
+        help: 'Run `flutter pub get` afterwards. Defaults to on when a new '
+            'project is created, off otherwise.',
       );
   }
+
+  @override
+  String get invocation => 'flutter_project_builder create [directory]';
 
   static const List<String> _configOptions = [
     'template',
@@ -130,21 +159,25 @@ class CreateCommand extends Command<int> {
 
   final CliLogger _logger;
   final String Function() _workingDirectory;
+  final FlutterCli _flutter;
 
   @override
   Future<int> run() async {
     final results = argResults!;
-    final currentDir = _workingDirectory();
     final dryRun = results.flag('dry-run');
 
-    _logger.header('Generating Architecture');
-
-    if (!PubspecUtils.isFlutterProject(currentDir)) {
-      _logger
-        ..error('No pubspec.yaml found or not a Flutter project.')
-        ..info('Please run this command inside an existing Flutter project.');
-      return 1;
+    if (results.rest.length > 1) {
+      usageException('Expected at most one directory, got '
+          '${results.rest.length}: ${results.rest.join(' ')}.');
     }
+    final directoryArg = results.rest.firstOrNull;
+    final currentDir = directoryArg == null
+        ? _workingDirectory()
+        : p.normalize(p.join(_workingDirectory(), directoryArg));
+    final needsFlutterCreate =
+        directoryArg != null && _isMissingOrEmpty(currentDir);
+
+    _logger.header('Generating Architecture');
 
     if (results.wasParsed('org') &&
         !ProjectConfig.isValidOrganization(results.option('org')!)) {
@@ -152,18 +185,52 @@ class CreateCommand extends Command<int> {
           'reverse-domain identifier such as "com.mycompany".');
     }
 
-    if (ProjectGenerator.isGenerated(currentDir) &&
-        !results.flag('force') &&
-        !dryRun) {
-      _logger
-        ..error('The architecture has already been generated here.')
-        ..info(
-          'Use `flutter_project_builder upgrade` to refresh lib/core, or '
-          'pass --force to regenerate everything (overwrites generated '
-          'files, including lib/main.dart and lib/router/). Add --dry-run '
-          'to preview.',
+    String? projectName;
+    if (needsFlutterCreate) {
+      projectName = results.option('project-name') ?? p.basename(currentDir);
+      if (!_isValidPackageName(projectName)) {
+        usageException(
+          '"$projectName" is not a valid package name. Use lowercase '
+          'letters, digits and underscores (e.g. my_app), or pass '
+          '--project-name.',
         );
-      return 1;
+      }
+    } else {
+      for (final option in ['project-name', 'platforms']) {
+        if (results.wasParsed(option)) {
+          _logger.warning('--$option is only used when a new project is '
+              'created; ignoring it.');
+        }
+      }
+      if (!PubspecUtils.isFlutterProject(currentDir)) {
+        _logger
+          ..error(
+            directoryArg == null
+                ? 'No pubspec.yaml found or not a Flutter project.'
+                : '$directoryArg exists but is not a Flutter project.',
+          )
+          ..info(
+            directoryArg == null
+                ? 'Run this command inside a Flutter project, or pass a new '
+                    'directory name: flutter_project_builder create my_app'
+                : 'Choose a new directory name, or an existing Flutter '
+                    'project.',
+          );
+        return 1;
+      }
+      if (ProjectGenerator.isGenerated(currentDir) &&
+          !results.flag('force') &&
+          !dryRun) {
+        _logger
+          ..error('The architecture has already been generated here.')
+          ..info(
+            'Use `flutter_project_builder upgrade` to refresh lib/core, or '
+            'pass --force to regenerate everything (overwrites generated '
+            'files, including lib/main.dart and lib/router/). Add --dry-run '
+            'to preview.',
+          );
+        return 1;
+      }
     }
 
     final hasConfigFile = ProjectConfig.existsIn(currentDir);
@@ -185,6 +252,25 @@ class CreateCommand extends Command<int> {
     }
     config = _applyExplicitOptions(config);
 
+    if (needsFlutterCreate) {
+      final arguments = FlutterCli.createArguments(
+        currentDir,
+        projectName: projectName!,
+        organization: config.hasCustomOrganization ? config.organization : null,
+        platforms: results.multiOption('platforms'),
+      );
+      if (dryRun) {
+        _logger
+          ..section('Dry run (nothing was written)')
+          ..info('Would run: flutter ${arguments.join(' ')}')
+          ..info('Then generate the architecture in $directoryArg with:');
+        _printSummary(config);
+        return 0;
+      }
+      final created = await _runFlutterCreate(currentDir, projectName, config);
+      if (!created) return 1;
+    }
+
     if (!config.riverpod) {
       _logger.warning(
         'riverpod: false only omits the AsyncValue UI helpers; the generated '
@@ -192,21 +278,7 @@ class CreateCommand extends Command<int> {
       );
     }
 
-    _logger.summaryBox('Configuration', {
-      'Template': config.template,
-      'Organization': config.hasCustomOrganization
-          ? '${config.organization} (sets app IDs)'
-          : '${config.organization} (app IDs unchanged)',
-      'Flavors': config.hasFlavors
-          ? '${config.flavors.join(', ')}'
-              '${config.hasNativeFlavors ? ' (Dart + native)' : ' (Dart only)'}'
-          : 'None',
-      'Network (Dio)': _yesNo(config.dio),
-      'Storage (Hive CE)': _yesNo(config.hive),
-      'Localization': _yesNo(config.localization),
-      'Firebase': _yesNo(config.firebase),
-      'Samples': _yesNo(config.sampleFeatures),
-    });
+    _printSummary(config);
 
     final generator = ProjectGenerator(
       projectPath: currentDir,
@@ -246,10 +318,16 @@ class CreateCommand extends Command<int> {
     }
     _printWarnings(generator.warnings);
 
+    final runPubGet =
+        results.wasParsed('pub') ? results.flag('pub') : needsFlutterCreate;
+    final pubGetDone = runPubGet && await _runPubGet(currentDir);
+
     final firstFlavor = config.hasFlavors ? config.flavors.first : null;
     _logger.nextSteps([
-      'Run `flutter pub get` to install dependencies'
-          '${config.localization ? ' and generate localizations' : ''}',
+      if (directoryArg != null) 'cd $directoryArg',
+      if (!pubGetDone)
+        'Run `flutter pub get` to install dependencies'
+            '${config.localization ? ' and generate localizations' : ''}',
       if (config.firebase)
         'Run `flutterfire configure` to connect your Firebase project',
       'Run `flutter test` to run the generated tests',
@@ -264,6 +342,82 @@ class CreateCommand extends Command<int> {
     ]);
 
     return 0;
+  }
+
+  void _printSummary(ProjectConfig config) {
+    _logger.summaryBox('Configuration', {
+      'Template': config.template,
+      'Organization': config.hasCustomOrganization
+          ? '${config.organization} (sets app IDs)'
+          : '${config.organization} (app IDs unchanged)',
+      'Flavors': config.hasFlavors
+          ? '${config.flavors.join(', ')}'
+              '${config.hasNativeFlavors ? ' (Dart + native)' : ' (Dart only)'}'
+          : 'None',
+      'Network (Dio)': _yesNo(config.dio),
+      'Storage (Hive CE)': _yesNo(config.hive),
+      'Localization': _yesNo(config.localization),
+      'Firebase': _yesNo(config.firebase),
+      'Samples': _yesNo(config.sampleFeatures),
+    });
+  }
+
+  static bool _isMissingOrEmpty(String path) {
+    final dir = Directory(path);
+    return !dir.existsSync() || dir.listSync().isEmpty;
+  }
+
+  static bool _isValidPackageName(String name) =>
+      RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(name) &&
+      StringUtils.isValidIdentifier(name);
+
+  Future<bool> _runFlutterCreate(
+    String directory,
+    String projectName,
+    ProjectConfig config,
+  ) async {
+    _logger.info('Running flutter create for $projectName...');
+    final ProcessResult result;
+    try {
+      result = await _flutter.create(
+        directory,
+        projectName: projectName,
+        organization: config.hasCustomOrganization ? config.organization : null,
+        platforms: argResults!.multiOption('platforms'),
+      );
+    } on ProcessException {
+      _logger.error('Could not run `flutter`. Make sure the Flutter SDK is on '
+          'your PATH (check with `flutter_project_builder doctor`).');
+      return false;
+    }
+    if (result.exitCode != 0 || !PubspecUtils.isFlutterProject(directory)) {
+      _logger.error('flutter create failed (exit code ${result.exitCode}).');
+      final output = '${result.stderr}'.trim().isNotEmpty
+          ? '${result.stderr}'
+          : '${result.stdout}';
+      if (output.trim().isNotEmpty) _logger.write(output.trim());
+      return false;
+    }
+    _logger.success('Created Flutter project in $directory');
+    return true;
+  }
+
+  Future<bool> _runPubGet(String directory) async {
+    _logger.info('Running flutter pub get...');
+    try {
+      final result = await _flutter.pubGet(directory);
+      if (result.exitCode == 0) {
+        _logger.success('Dependencies installed');
+        return true;
+      }
+      _logger.warning(
+        '`flutter pub get` failed (exit code ${result.exitCode}); run it '
+        'manually. ${'${result.stderr}'.trim()}',
+      );
+    } on ProcessException {
+      _logger.warning('Could not run `flutter pub get`; run it manually.');
+    }
+    return false;
   }
 
   void _printWarnings(List<String> warnings) {

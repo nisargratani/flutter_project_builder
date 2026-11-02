@@ -11,7 +11,10 @@
 /// # Install globally
 /// dart pub global activate flutter_project_builder
 ///
-/// # Generate architecture
+/// # Create a new app with the architecture
+/// flutter_project_builder create my_app
+///
+/// # Or generate inside an existing Flutter project
 /// flutter_project_builder create
 ///
 /// # Or run via dart
@@ -36,3 +39,4 @@ export 'src/cli/command_runner.dart';
 export 'src/config/constants.dart';
 export 'src/config/project_config.dart';
 export 'src/generators/project_generator.dart';
+export 'src/utils/flutter_cli.dart';

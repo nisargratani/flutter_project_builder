@@ -11,6 +11,10 @@ Initial release.
 
 ### `create`
 
+- `create <directory>` runs `flutter create` (with `--org`,
+  `--project-name` and `--platforms`), generates the architecture and runs
+  `flutter pub get`, all in one command. Without a directory it generates
+  in the current Flutter project.
 - Generates a feature-first Clean Architecture setup in an existing Flutter
   project: Riverpod 3, GoRouter, Dio, Hive CE, gen-l10n localization,
   Material 3 light and dark themes built from `AppColors`, error handling

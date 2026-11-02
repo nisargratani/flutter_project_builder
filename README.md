@@ -4,13 +4,17 @@
 [![CI](https://github.com/nisargratani/flutter_project_builder/actions/workflows/ci.yml/badge.svg)](https://github.com/nisargratani/flutter_project_builder/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A command-line tool that turns a fresh `flutter create` project into a
-feature-first Clean Architecture app (Riverpod, GoRouter, Dio, Hive CE,
-localization, Firebase), configures **native flavors and app IDs**, and keeps
-generating **features, pages, widgets, providers and models** as you build.
+A command-line tool that creates a Flutter app (or upgrades an existing
+one) with a feature-first Clean Architecture: Riverpod, GoRouter, Dio,
+Hive CE, localization and Firebase. It configures **native flavors and app
+IDs**, and keeps generating **features, pages, widgets, providers and
+models** as you build.
 
-Everything it generates passes `flutter analyze` and `flutter test` right
-after `flutter pub get`.
+```bash
+flutter_project_builder create my_app --template=enterprise --org=com.mycompany
+```
+
+Everything it generates passes `flutter analyze` and `flutter test`.
 
 ## Requirements
 
@@ -31,19 +35,23 @@ Windows), or run commands as `dart pub global run flutter_project_builder ...`.
 
 ## Quick start
 
+One command creates the Flutter project (it runs `flutter create` for you),
+generates the architecture and installs dependencies:
+
 ```bash
-flutter create my_app
+flutter_project_builder create my_app --template=enterprise --org=com.mycompany
 cd my_app
-flutter_project_builder create --template=enterprise --org=com.mycompany
-flutter pub get
 flutter test
 flutter run --flavor dev
 ```
 
-Not sure what `create` will touch? Preview it first:
+Already have a Flutter project? Run `create` inside it without a directory:
 
 ```bash
-flutter_project_builder create --template=enterprise --dry-run
+cd existing_app
+flutter_project_builder create --dry-run    # preview what would change
+flutter_project_builder create
+flutter pub get
 ```
 
 ## Templates
@@ -62,8 +70,20 @@ tests.
 
 ## `create` options
 
+`flutter_project_builder create [directory] [options]`
+
+- **With a directory** that does not exist (or is empty): runs
+  `flutter create` (passing `--org`, `--project-name`, `--platforms`),
+  generates the architecture inside it and runs `flutter pub get`.
+- **With a directory** that is an existing Flutter project: generates inside
+  it. Any other existing directory is refused.
+- **Without a directory:** generates in the current Flutter project.
+
 | Option | Default | Description |
 | --- | --- | --- |
+| `--project-name` | directory name | Package name for a new project; required when the directory name isn't a valid one, e.g. `my-app`. |
+| `--platforms` | all | Platforms for a new project, e.g. `--platforms=android,ios`. |
+| `--[no-]pub` | on for new projects | Run `flutter pub get` at the end. |
 | `--template`, `-t` | `clean` | Preset, see above. |
 | `--org`, `-o` | `com.example` | Sets the Android `applicationId`, the iOS/macOS bundle IDs and the Linux application ID to `<org>.<package>` (Windows: company name). The default leaves IDs unchanged. |
 | `--[no-]flavors`, `-f` | off | `dev`, `stage`, `prod` flavors (use the config file for other names). |
