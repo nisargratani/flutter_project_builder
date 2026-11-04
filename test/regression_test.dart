@@ -6,6 +6,7 @@ import 'package:flutter_project_builder/src/cli/commands/upgrade_command.dart';
 import 'package:flutter_project_builder/src/generators/model_field.dart';
 import 'package:flutter_project_builder/src/templates/code/code_template.dart';
 import 'package:flutter_project_builder/src/templates/tests/test_template.dart';
+import 'package:flutter_project_builder/src/utils/flutter_templates.dart';
 import 'package:flutter_project_builder/src/utils/native_project.dart';
 import 'package:flutter_project_builder/src/utils/pubspec_utils.dart';
 import 'package:flutter_project_builder/src/utils/sdk_type_names.dart';
@@ -17,17 +18,21 @@ import 'helpers.dart';
 
 const String marker = 'lib/${PackageConstants.generatedMarkerFile}';
 
-/// A project like `flutter create` leaves it: counter app and its test.
+/// A project like `flutter create` leaves it, with its counter test.
+/// (Its `lib/main.dart` is only recognised through the Flutter SDK's
+/// templates, so it is left out here.)
 Directory flutterCreatedProject() {
   final project = createProject();
-  writeFile(project, 'lib/main.dart', '// counter app\n');
   writeFile(
     project,
     'test/widget_test.dart',
-    FlutterCli.defaultWidgetTest('my_app'),
+    FlutterTemplates.defaultWidgetTest('my_app'),
   );
   return project;
 }
+
+/// The installed Flutter SDK, or `null` (as in CI's Dart-only job).
+final String? flutterRoot = NativeProject.flutterRoot();
 
 /// Records `dart`/`flutter` invocations made through [FlutterCli].
 class RecordingRunner {
@@ -99,7 +104,7 @@ void main() {
       writeFile(
         project,
         'test/widget_test.dart',
-        '${FlutterCli.defaultWidgetTest('my_app')}// my extra test\n',
+        '${FlutterTemplates.defaultWidgetTest('my_app')}// my extra test\n',
       );
       final before = snapshot(project);
 
@@ -107,7 +112,7 @@ void main() {
 
       expect(run.exitCode, 1, reason: '$run');
       expect(run.output, contains('test/widget_test.dart'));
-      expect(run.output, contains('counter test from `flutter create`'));
+      expect(run.output, contains('unchanged since `flutter create`'));
       expect(snapshot(project), before);
     });
 
@@ -124,27 +129,143 @@ void main() {
       expect(await runCli(project, ['create', '--no-sample']), 0);
     });
 
-    test('recognises the flutter create counter test', () {
-      final test = FlutterCli.defaultWidgetTest('shop');
-      expect(FlutterCli.isDefaultWidgetTest(test, 'shop'), isTrue);
-      expect(
-        FlutterCli.isDefaultWidgetTest(test.replaceAll('\n', '\r\n'), 'shop'),
-        isTrue,
-        reason: 'CRLF checkout',
-      );
-      expect(
-        FlutterCli.isDefaultWidgetTest(
-          test.replaceFirst('const MyApp()', 'MyApp()'),
-          'shop',
-        ),
-        isTrue,
-        reason: 'older Flutter versions',
-      );
-      expect(FlutterCli.isDefaultWidgetTest(test, 'other_app'), isFalse);
-      expect(
-        FlutterCli.isDefaultWidgetTest('$test\n// mine\n', 'shop'),
-        isFalse,
-      );
+    test('lists a changed lib/main.dart as a conflict', () async {
+      final project = flutterCreatedProject();
+      writeFile(project, 'lib/main.dart', 'void main() {} // my app\n');
+      final before = snapshot(project);
+
+      final run = await runCliCaptured(project, ['create']);
+
+      expect(run.exitCode, 1, reason: '$run');
+      expect(run.output, contains('lib/main.dart'));
+      expect(run.output, contains('unchanged since `flutter create`'));
+      expect(snapshot(project), before);
+
+      expect(await runCli(project, ['create', '--force']), 0);
+      expect(readFile(project, 'lib/main.dart'), contains('bootstrap'));
+    });
+
+    test('replaces a lib/main.dart an earlier create wrote', () async {
+      final project = flutterCreatedProject();
+      expect(await runCli(project, ['create', '--no-sample']), 0);
+      // clean keeps lib/main.dart; create again, with other options.
+      expect(await runCli(project, ['clean', '--force']), 0);
+      expect(await runCli(project, ['create', '--no-sample', '--flavors']), 0);
+      expect(readFile(project, 'lib/main.dart'), contains('appFlavor'));
+    });
+
+    test(
+      'replaces the lib/main.dart of the installed Flutter SDK',
+      () async {
+        final project = flutterCreatedProject();
+        final template = File(
+          p.joinAll([
+            flutterRoot!,
+            'packages',
+            'flutter_tools',
+            'templates',
+            'app',
+            'lib',
+            'main.dart.tmpl',
+          ]),
+        ).readAsStringSync();
+        for (final empty in [false, true]) {
+          writeFile(
+            project,
+            'lib/main.dart',
+            FlutterTemplates.render(
+              template,
+              sections: {'withEmptyMain': empty},
+              values: {'projectName': 'my_app'},
+            )!,
+          );
+          expect(await runCli(project, ['create']), 0, reason: 'empty=$empty');
+          File(ProjectGenerator.markerPath(project.path)).deleteSync();
+        }
+      },
+      skip: flutterRoot == null ? 'Flutter SDK not found' : false,
+    );
+
+    group('FlutterTemplates', () {
+      late String root;
+      setUp(() {
+        final sdk = Directory.systemTemp.createTempSync('fpb_tpl_');
+        addTearDown(() => sdk.deleteSync(recursive: true));
+        root = sdk.path;
+        writeFile(
+            sdk, 'packages/flutter_tools/templates/app/lib/main.dart.tmpl', '''
+import 'package:flutter/material.dart';
+{{#withEmptyMain}}
+
+void main() => runApp(const MainApp());
+{{/withEmptyMain}}
+{{^withEmptyMain}}
+{{#withPlatformChannelPluginHook}}
+import 'package:{{pluginProjectName}}/{{pluginProjectName}}.dart';
+{{/withPlatformChannelPluginHook}}
+
+void main() => runApp(const MyApp());
+{{^withPluginHook}}
+// Counter app.
+{{/withPluginHook}}
+{{/withEmptyMain}}
+''');
+      });
+
+      test('recognise unchanged lib/main.dart from the SDK templates', () {
+        bool check(String content) => FlutterTemplates.isUnmodified(
+              'lib/main.dart',
+              content,
+              'shop',
+              flutterRoot: root,
+            );
+        const counter = "import 'package:flutter/material.dart';\n\n"
+            'void main() => runApp(const MyApp());\n// Counter app.\n';
+        const empty = "import 'package:flutter/material.dart';\n\n"
+            'void main() => runApp(const MainApp());\n';
+        expect(check(counter), isTrue);
+        expect(check(counter.replaceAll('\n', '\r\n')), isTrue);
+        expect(check(empty), isTrue);
+        expect(check('$counter// mine\n'), isFalse);
+        expect(
+          FlutterTemplates.isUnmodified('lib/main.dart', counter, 'shop'),
+          isFalse,
+          reason: 'without an SDK, lib/main.dart is never recognised',
+        );
+      });
+
+      test('recognise the flutter create counter test', () {
+        final test = FlutterTemplates.defaultWidgetTest('shop');
+        bool check(String content, [String project = 'shop']) =>
+            FlutterTemplates.isUnmodified(
+              'test/widget_test.dart',
+              content,
+              project,
+            );
+        expect(check(test), isTrue);
+        expect(check(test.replaceAll('\n', '\r\n')), isTrue);
+        expect(
+          check(test.replaceFirst('const MyApp()', 'MyApp()')),
+          isTrue,
+          reason: 'older Flutter versions',
+        );
+        expect(check(test, 'other_app'), isFalse);
+        expect(check('$test\n// mine\n'), isFalse);
+      });
+
+      test('render refuses templates it cannot render exactly', () {
+        expect(FlutterTemplates.render('{{#a}}\nx\n'), isNull);
+        expect(FlutterTemplates.render('{{#a}}\nx\n{{/b}}\n'), isNull);
+        expect(FlutterTemplates.render('x {{#a}}y{{/a}}\n'), isNull);
+        expect(FlutterTemplates.render('name: {{other}}\n'), isNull);
+        expect(
+          FlutterTemplates.render(
+            '{{^a}}\nname: {{projectName}}\n{{/a}}\n',
+            values: {'projectName': 'x'},
+          ),
+          'name: x\n',
+        );
+      });
     });
   });
 

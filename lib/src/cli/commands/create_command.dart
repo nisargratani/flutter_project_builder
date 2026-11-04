@@ -6,8 +6,11 @@ import 'package:path/path.dart' as p;
 import '../../config/constants.dart';
 import '../../config/project_config.dart';
 import '../../generators/project_generator.dart';
+import '../../templates/config/config_template.dart';
 import '../../utils/file_utils.dart';
 import '../../utils/flutter_cli.dart';
+import '../../utils/flutter_templates.dart';
+import '../../utils/native_project.dart';
 import '../../utils/pubspec_utils.dart';
 import '../../utils/string_utils.dart';
 import '../cli_logger.dart';
@@ -308,10 +311,12 @@ class CreateCommand extends Command<int> {
           'the generated architecture:',
         );
         conflicts.forEach(_logger.detail);
-        if (conflicts.contains(_widgetTest)) {
+        final starters = _starterFiles.where(conflicts.contains).toList();
+        if (starters.isNotEmpty) {
           _logger.info(
-            '$_widgetTest is only replaced without --force while it is still '
-            'the counter test from `flutter create`.',
+            '${starters.join(' and ')} ${starters.length == 1 ? 'is' : 'are'} '
+            'only replaced without --force while unchanged since '
+            '`flutter create`.',
           );
         }
         _logger.info(
@@ -402,7 +407,11 @@ class CreateCommand extends Command<int> {
     });
   }
 
-  static const String _widgetTest = 'test/widget_test.dart';
+  /// Files `flutter create` writes that the architecture replaces.
+  static const List<String> _starterFiles = [
+    'lib/main.dart',
+    'test/widget_test.dart',
+  ];
 
   /// Folders whose files `create` edits in place (application IDs, flavors),
   /// keeping the rest of each file.
@@ -417,8 +426,9 @@ class CreateCommand extends Command<int> {
   /// The existing files (project-relative, `/`-separated) that generating
   /// [config] in [projectPath] would overwrite, apart from the ones `create`
   /// is meant to change: `pubspec.yaml` and the native projects (edited in
-  /// place), `lib/main.dart` (replaced), and `test/widget_test.dart` while
-  /// it is still the `flutter create` counter test.
+  /// place), and `lib/main.dart` and `test/widget_test.dart` while they are
+  /// still what `flutter create` wrote (or, for `lib/main.dart`, what an
+  /// earlier `create` wrote; `clean` keeps it).
   Future<List<String>> _conflictingFiles(
     String projectPath,
     ProjectConfig config,
@@ -432,12 +442,28 @@ class CreateCommand extends Command<int> {
     final projectName =
         PubspecUtils.getProjectName(projectPath) ?? p.basename(projectPath);
 
+    final flutterRoot = NativeProject.flutterRoot();
+
+    bool isStarter(String path) {
+      final content =
+          File(p.joinAll([projectPath, ...path.split('/')])).readAsStringSync();
+      return FlutterTemplates.isUnmodified(
+            path,
+            content,
+            projectName,
+            flutterRoot: flutterRoot,
+          ) ||
+          (path == 'lib/main.dart' &&
+              [true, false].any(
+                (flavors) =>
+                    content.replaceAll('\r\n', '\n') ==
+                    ConfigTemplate.main(flavors: flavors),
+              ));
+    }
+
     bool replacedByDesign(String path) => switch (path) {
-          'pubspec.yaml' || 'lib/main.dart' => true,
-          _widgetTest => FlutterCli.isDefaultWidgetTest(
-              File(p.join(projectPath, _widgetTest)).readAsStringSync(),
-              projectName,
-            ),
+          'pubspec.yaml' => true,
+          'lib/main.dart' || 'test/widget_test.dart' => isStarter(path),
           _ => _nativeFolders.contains(path.split('/').first),
         };
 

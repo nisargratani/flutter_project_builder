@@ -5,18 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2026-11-02
+## [0.1.0] - 2026-11-04
 
 This release changes how `create`, `generate`, `clean` and the configuration
 file behave (see below), so scripts and CI jobs may need updating.
 
 ### Changed (behaviour)
 
-- `create` in an existing project no longer overwrites your files silently.
-  If it would overwrite any existing file other than `pubspec.yaml`, the
-  native projects (edited in place), `lib/main.dart` and an unmodified
-  `flutter create` `test/widget_test.dart`, it lists those files, writes
-  nothing and exits 1. `--force` overwrites them.
+- `create` in an existing project no longer overwrites your files silently,
+  including `lib/main.dart`. It edits `pubspec.yaml` and the native projects
+  in place, and replaces `lib/main.dart` and `test/widget_test.dart` only
+  while they are unchanged since `flutter create` (or, for `lib/main.dart`,
+  since an earlier `create`). If it would overwrite any other existing
+  file, it lists those files, writes nothing and exits 1. `--force`
+  overwrites them.
 - `generate` requires a project set up with `create` and exits 1 otherwise,
   with a message to run `create` first.
 - `clean` deletes only the files flutter_project_builder generated. They are

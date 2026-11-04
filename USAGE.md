@@ -29,9 +29,8 @@ is not a valid package name), `--platforms=android,ios`, `--no-pub`. Add
 `--dry-run` to see the `flutter create` command that would run.
 
 For an **existing** Flutter project, run `create` inside it without a
-directory. Preview first: it replaces `lib/main.dart`, and
-`test/widget_test.dart` while that is still the counter test from
-`flutter create`.
+directory. Preview first: it replaces `lib/main.dart` and
+`test/widget_test.dart` while they are unchanged since `flutter create`.
 
 ```bash
 cd existing_app

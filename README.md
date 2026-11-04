@@ -55,8 +55,8 @@ flutter pub get
 ```
 
 `create` never overwrites your own files silently. It replaces `lib/main.dart`
-(and `test/widget_test.dart` while it is still the counter test from
-`flutter create`); if any other existing file would be overwritten, it lists
+and `test/widget_test.dart` only while they are unchanged since
+`flutter create`; if any other existing file would be overwritten, it lists
 them, writes nothing and exits 1. See [Existing projects](#existing-projects).
 
 ## Templates
@@ -113,14 +113,18 @@ would overwrite:
 
 - `pubspec.yaml` and the native projects (`android/`, `ios/`, `macos/`,
   `linux/`, `windows/`) are edited in place; the rest of each file is kept.
-- `lib/main.dart` is replaced.
-- `test/widget_test.dart` is replaced only while it is still the unmodified
-  counter test from `flutter create`.
-- Any other existing file that would be overwritten (for example your own
-  `lib/app.dart`, `lib/core/theme/app_theme.dart` or
-  `lib/router/app_router.dart`) stops `create`: it lists the files, writes
-  nothing and exits 1. Move or rename them, or pass `--force` to overwrite
-  them. Files with exactly the generated content don't count.
+- `lib/main.dart` and `test/widget_test.dart` are replaced only while they
+  are unchanged since `flutter create` (compared with the templates of your
+  Flutter SDK; `--empty` projects too). A `lib/main.dart` that an earlier
+  `create` wrote (`clean` keeps it) is replaced as well.
+- Any other existing file that would be overwritten (your own
+  `lib/main.dart`, `lib/app.dart`, `lib/core/theme/app_theme.dart`,
+  `lib/router/app_router.dart`, ...) stops `create`: it lists the files,
+  writes nothing and exits 1. Move or rename them, or pass `--force` to
+  overwrite them. Files with exactly the generated content don't count.
+  A project created by another Flutter version may need `--force` for an
+  untouched `lib/main.dart`, because that template changes between
+  versions.
 
 Existing dependency constraints are kept. If one excludes the version the
 generated code is written for (for example `flutter_riverpod: ^2.6.1` when it
